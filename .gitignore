@@ -6,3 +6,5 @@ media/pdf.worker.min.mjs
 .codex/
 .entire/
 .kiro/
+temp/
+.codegraph/

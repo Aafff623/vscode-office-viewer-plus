@@ -1,6 +1,36 @@
 # Changelog
 
 
+## 1.0.0 (2026-09-15)
+
+### Added
+- Canvas interactions for all previews: Space + drag / middle-button pan, Ctrl/Cmd + wheel zoom (30%–350%) with a HUD badge, and `Ctrl+0` reset
+- Double-click zoom toggle (jump to 150%, double-click again to restore) for Word, Excel, PowerPoint and PDF previews
+- Word TOC rendering: real tab stops now resolve via docx-preview's experimental mode, restoring dot leaders and right-aligned page numbers; a flexbox dot-leader fallback covers lines the library cannot resolve
+- Markdown: relative image paths resolve from the file directory; relative links open the target file via the editor
+- Page thumbnails pane (document minimap) for PDF and Word previews: per-page cards in a collapsible left sidebar showing the real page content scaled down (rasterized live for Word via html2canvas-pro), click-to-jump navigation, current-page highlighting, and a remembered open/closed state; opening it re-fits the document to the remaining width
+
+### Changed
+- Word thumbnails rasterize lazily — only cards scrolled into view are rendered (one at a time, with a hang timeout), so large documents no longer rasterize every page up front
+- Word thumbnail captures clone only the target page instead of the whole document (O(page) instead of O(document) per thumbnail), with identical output
+- A failed or timed-out thumbnail rasterization is retried (up to 3 attempts) instead of leaving a permanent placeholder; the page currently in view is rasterized first
+- The thumbnails pane no longer rasterizes pages in the background while it is collapsed
+- Double-click zoom ignores double-clicks on interactive elements (links, buttons, sheet tabs, thumbnail cards)
+- Closing the thumbnails pane no longer resets a zoom level the user set manually
+- PDF initial scale now adapts to the editor width (clamped to 0.4×–1.4×) instead of a fixed 1.5×
+- English UI strings replace the leftover Japanese ones
+- Markdown: mermaid blocks inside indented lists and `~~~` fences now render as diagrams; rendered HTML is sanitized with DOMPurify
+- Minimum VS Code version raised to 1.128.0 (extension API typings kept current)
+
+### Fixed
+- Relative links in previews can no longer escape the document's folder (`..` traversal) and now open inside the editor instead of via the OS default handler
+- Release workflow: Marketplace/Open VSX publish steps now respect configured PATs, and CI runs typecheck + tests before packaging
+- CSV/TSV: UTF-16 files (with BOM) decode correctly; files that fall back to Shift_JIS decoding now show a warning banner
+- Excel: sheets render lazily on tab activation so large workbooks no longer freeze the preview; SheetJS updated to 0.20.3 (fixes CVE-2023-30533, CVE-2024-22363)
+- Marp: the preview keeps its own zoom/keyboard handling (no more double zoom from Ctrl+wheel); holding Space no longer skips through slides; global listeners are cleaned up on re-render
+- Panning now keeps working when the cursor leaves the webview, and drags no longer swallow the next click
+- HTML preview sandbox tightened to match the actual (static) behavior: page scripts stay disabled by CSP, no same-origin access
+
 ## 0.5.0 (2026-08-31)
 
 ### Added
