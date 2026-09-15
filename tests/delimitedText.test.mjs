@@ -73,11 +73,47 @@ test('ストリーミング解析で指定行数ずつ取得できる', () => {
 test('UTF-8 BOMを除去してデコードする', () => {
   const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...Buffer.from('name\tvalue', 'utf8')]);
 
-  assert.equal(decodeDelimitedText(bytes), 'name\tvalue');
+  assert.deepEqual(decodeDelimitedText(bytes), {
+    text: 'name\tvalue',
+    encoding: 'utf-8',
+    fallbackUsed: false,
+  });
 });
 
-test('UTF-8として不正なバイト列をShift_JISとしてデコードする', () => {
+test('UTF-16LE BOM付きファイルをUTF-16LEとしてデコードする', () => {
+  const body = Buffer.from('name\tvalue', 'utf16le');
+  const bytes = new Uint8Array([0xff, 0xfe, ...body]);
+
+  assert.deepEqual(decodeDelimitedText(bytes), {
+    text: 'name\tvalue',
+    encoding: 'utf-16le',
+    fallbackUsed: false,
+  });
+});
+
+test('UTF-16BE BOM付きファイルをUTF-16BEとしてデコードする', () => {
+  const body = Buffer.from('name\tvalue', 'utf16le');
+  // Swap each pair of bytes to produce UTF-16BE, then prepend the BE BOM.
+  const swapped = new Uint8Array(body.length);
+  for (let i = 0; i < body.length; i += 2) {
+    swapped[i] = body[i + 1];
+    swapped[i + 1] = body[i];
+  }
+  const bytes = new Uint8Array([0xfe, 0xff, ...swapped]);
+
+  assert.deepEqual(decodeDelimitedText(bytes), {
+    text: 'name\tvalue',
+    encoding: 'utf-16be',
+    fallbackUsed: false,
+  });
+});
+
+test('UTF-8として不正なバイト列をShift_JISとしてデコードし、フォールバックを報告する', () => {
   const bytes = new Uint8Array([0x82, 0xa0, 0x09, 0x31]);
 
-  assert.equal(decodeDelimitedText(bytes), 'あ\t1');
+  assert.deepEqual(decodeDelimitedText(bytes), {
+    text: 'あ\t1',
+    encoding: 'shift_jis',
+    fallbackUsed: true,
+  });
 });

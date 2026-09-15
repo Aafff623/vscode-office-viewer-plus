@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { computePdfFitScale } from './pdfScale';
 
 declare global {
   interface Window {
@@ -40,9 +41,21 @@ export async function renderPdf(bytes: Uint8Array, container: HTMLElement): Prom
 
   const outputScale = window.devicePixelRatio || 1;
 
+  let fitScale = 1.0;
+  if (pdf.numPages > 0) {
+    const firstPage = await pdf.getPage(1);
+    const baseViewport = firstPage.getViewport({ scale: 1.0 });
+    const viewportWidth =
+      container.clientWidth ||
+      window.innerWidth ||
+      document.documentElement.clientWidth ||
+      800;
+    fitScale = computePdfFitScale(viewportWidth, baseViewport.width);
+  }
+
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.5 });
+    const viewport = page.getViewport({ scale: fitScale });
 
     const canvas = document.createElement('canvas');
     canvas.className = 'pdf-page';

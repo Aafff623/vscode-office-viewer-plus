@@ -1,4 +1,5 @@
 import { renderAsync } from 'docx-preview';
+import { enhanceDocxTocLayout } from './docxToc';
 
 export async function renderDocx(bytes: Uint8Array, container: HTMLElement): Promise<void> {
   await renderAsync(bytes, container, undefined, {
@@ -8,5 +9,13 @@ export async function renderDocx(bytes: Uint8Array, container: HTMLElement): Pro
     ignoreHeight: false,
     breakPages: true,
     useBase64URL: true,
+    // Compute real tab stops: the library then right-aligns text after a tab
+    // to the stop position and draws a dotted-underline leader — this is what
+    // renders Word TOC dot leaders correctly.
+    experimental: true,
   });
+
+  // Fallback pass for TOC lines whose tab stops the library could not
+  // resolve (runs delayed, after the library's own +500ms tab pass).
+  enhanceDocxTocLayout(container);
 }

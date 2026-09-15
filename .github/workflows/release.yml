@@ -9,7 +9,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+    # Secrets cannot be read in step-level `if:` conditions; mapping them to
+    # job-level env lets the steps below test `env.VSCE_PAT != ''`.
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
     steps:
       - name: Checkout
@@ -24,15 +29,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
       - name: Package extension
-        run: npx vsce package --out vscode-office-viewer.vsix
+        run: npx @vscode/vsce package --no-git-tag-version --out vscode-office-viewer-plus.vsix
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vscode-office-viewer-plus.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath vscode-office-viewer.vsix --skip-duplicate
+        if: env.VSCE_PAT != ''
+        run: npx @vscode/vsce publish --packagePath vscode-office-viewer-plus.vsix --skip-duplicate
 
       - name: Publish to Open VSX
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish --packagePath vscode-office-viewer.vsix --skip-duplicate
+        if: env.OVSX_PAT != ''
+        run: npx ovsx publish --packagePath vscode-office-viewer-plus.vsix --skip-duplicate

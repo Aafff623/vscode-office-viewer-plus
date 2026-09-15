@@ -19,8 +19,8 @@ function renderDelimitedText(
   container: HTMLElement,
   delimiter: string
 ): void {
-  const text = decodeDelimitedText(bytes);
-  const parser = createDelimitedTextParser(text, delimiter);
+  const decoded = decodeDelimitedText(bytes);
+  const parser = createDelimitedTextParser(decoded.text, delimiter);
 
   const pane = document.createElement('div');
   pane.className = 'xlsx-sheet csv-sheet';
@@ -28,8 +28,16 @@ function renderDelimitedText(
 
   const firstRows = parser.nextRows(INITIAL_ROWS);
   if (firstRows.length === 0) {
-    pane.textContent = 'データがありません。';
+    pane.textContent = 'No data available.';
     return;
+  }
+
+  if (decoded.fallbackUsed) {
+    const note = document.createElement('div');
+    note.className = 'encoding-note';
+    note.textContent =
+      'This file is not valid UTF-8; it was decoded as Shift_JIS. Characters may be wrong if it uses another encoding.';
+    pane.appendChild(note);
   }
 
   const table = document.createElement('table');
@@ -42,7 +50,7 @@ function renderDelimitedText(
   const more = document.createElement('button');
   more.type = 'button';
   more.className = 'csv-more';
-  more.textContent = 'さらに表示';
+  more.textContent = 'Load more';
   controls.appendChild(count);
   controls.appendChild(more);
 
@@ -58,7 +66,7 @@ function renderDelimitedText(
     }
     tbody.appendChild(fragment);
     renderedRows += rows.length;
-    count.textContent = `${renderedRows.toLocaleString()} 行表示中`;
+    count.textContent = `Showing ${renderedRows.toLocaleString()} rows`;
     more.style.display = parser.done ? 'none' : 'inline-block';
   };
 
@@ -148,11 +156,41 @@ export function createDelimitedTextParser(
   };
 }
 
-export function decodeDelimitedText(bytes: Uint8Array): string {
+export interface DecodedDelimitedText {
+  text: string;
+  encoding: 'utf-8' | 'utf-16le' | 'utf-16be' | 'shift_jis';
+  /** True when UTF-8 decoding failed and Shift_JIS was used as a fallback. */
+  fallbackUsed: boolean;
+}
+
+export function decodeDelimitedText(bytes: Uint8Array): DecodedDelimitedText {
+  // TextDecoder strips the matching leading BOM itself.
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return {
+      text: new TextDecoder('utf-16le').decode(bytes),
+      encoding: 'utf-16le',
+      fallbackUsed: false,
+    };
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return {
+      text: new TextDecoder('utf-16be').decode(bytes),
+      encoding: 'utf-16be',
+      fallbackUsed: false,
+    };
+  }
   try {
-    return stripBom(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    return {
+      text: stripBom(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+      encoding: 'utf-8',
+      fallbackUsed: false,
+    };
   } catch {
-    return new TextDecoder('shift_jis').decode(bytes);
+    return {
+      text: new TextDecoder('shift_jis').decode(bytes),
+      encoding: 'shift_jis',
+      fallbackUsed: true,
+    };
   }
 }
 

@@ -1,22 +1,22 @@
 {
-  "name": "vscode-office-viewer",
-  "displayName": "Office File Preview",
-  "description": "Read-only preview for .docx, .xlsx, .csv, .tsv, .pdf, .pptx files and Marp slides inside VS Code",
-  "version": "0.5.0",
-  "publisher": "takashi-uchida",
+  "name": "vscode-office-viewer-plus",
+  "displayName": "Office File Preview Plus",
+  "description": "Enhanced Office preview for .docx, .xlsx, .pdf, .pptx with Figma-like Hand Tool pan, smooth zoom and modern UI inside VS Code",
+  "version": "1.0.0",
+  "publisher": "Aafff623",
   "author": {
-    "name": "Takashi Uchida",
-    "email": "takashi.uchida.office@gmail.com"
+    "name": "Aafff623",
+    "url": "https://github.com/Aafff623"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/takashi-uchida/vscode-office-viewer"
+    "url": "https://github.com/Aafff623/vscode-office-viewer-plus"
   },
   "bugs": {
-    "url": "https://github.com/takashi-uchida/vscode-office-viewer/issues"
+    "url": "https://github.com/Aafff623/vscode-office-viewer-plus/issues"
   },
-  "homepage": "https://github.com/takashi-uchida/vscode-office-viewer#readme",
+  "homepage": "https://github.com/Aafff623/vscode-office-viewer-plus#readme",
   "icon": "icon.png",
   "keywords": [
     "docx",
@@ -36,7 +36,7 @@
     "viewer"
   ],
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.128.0"
   },
   "categories": [
     "Visualization",
@@ -171,7 +171,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.128.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.21.5",
     "typescript": "^5.4.5"
@@ -179,10 +179,12 @@
   "dependencies": {
     "@marp-team/marp-core": "^4.1.1",
     "docx-preview": "^0.3.3",
+    "dompurify": "^3.4.15",
+    "html2canvas-pro": "^2.4.3",
     "marked": "^18.0.5",
     "mermaid": "^11.15.0",
     "pdfjs-dist": "^4.4.168",
     "pptx-preview": "^1.0.4",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

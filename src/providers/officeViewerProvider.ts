@@ -71,6 +71,26 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
       if (msg?.type === 'ready') {
         void sendDocument();
       }
+      if (msg?.type === 'openRelative' && typeof msg.path === 'string') {
+        // Resolved against the document so previewed files can link to
+        // sibling files (e.g. images or other markdown in the same folder).
+        // The resolved target must stay inside that folder — relative links
+        // come straight from document content, so `..` segments must not be
+        // able to escape it. Open inside the editor rather than via
+        // openExternal, which would hand the file to the OS default handler.
+        // joinPath treats `\` as a literal character (POSIX semantics), so a
+        // Windows-style `..\..\file` would pass the prefix check and then
+        // escape when fsPath normalizes it — normalize separators first;
+        // NTFS filenames cannot contain `\` anyway.
+        const rel = msg.path.replaceAll('\\', '/');
+        const base = vscode.Uri.joinPath(document.uri, '..');
+        const target = vscode.Uri.joinPath(base, rel);
+        const prefix = base.path.endsWith('/') ? base.path : `${base.path}/`;
+        if (!target.path.startsWith(prefix) || target.path === base.path) {
+          return;
+        }
+        void vscode.commands.executeCommand('vscode.open', target);
+      }
     });
     webviewPanel.onDidDispose(() => sub.dispose());
 
@@ -114,7 +134,7 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
     ].join('; ');
 
     return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
@@ -122,7 +142,7 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
   <link rel="stylesheet" href="${styleUri}" />
 </head>
 <body>
-  <div id="status" class="status">読み込み中…</div>
+  <div id="status" class="status">Loading preview…</div>
   <div id="container" class="container"></div>
   <script nonce="${nonce}">window.__PDF_WORKER_SRC__ = ${JSON.stringify(workerUri.toString())};</script>
   <script nonce="${nonce}" src="${scriptUri}"></script>

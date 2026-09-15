@@ -1,23 +1,30 @@
 import { marked } from 'marked';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
+import type { RenderContext } from './bootstrap';
+import { rewriteResourceUrls } from './resourceUri';
 
-export async function renderMarkdown(bytes: Uint8Array, container: HTMLElement): Promise<void> {
+export async function renderMarkdown(
+  bytes: Uint8Array,
+  container: HTMLElement,
+  context: RenderContext = {}
+): Promise<void> {
   const text = new TextDecoder().decode(bytes);
 
-  // Marp スライドの場合はユーザーに案内を表示
-  // (Marp スライドは "Open With..." → "Office File Preview (Marp Slides)" で開くか、
-  //  ファイル名を *.marp.md にすると自動的に Marp プレビューが使われます)
+  // Show a notice if Marp slide front matter is detected
+  // (Marp slides can be viewed with "Reopen Editor With..." -> "Office File Preview (Marp Slides)"
+  //  or by naming the file *.marp.md)
   const isMarp = /^---\s*\n[\s\S]*?marp:\s*true[\s\S]*?\n---/m.test(text);
   if (isMarp) {
     const notice = document.createElement('div');
-    notice.style.cssText = 'padding:16px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;margin:16px;font-size:14px;';
+    notice.style.cssText = 'padding:16px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;margin:16px;font-size:14px;color:#856404;';
     notice.innerHTML = `
-      <strong>💡 Marp スライドを検出しました</strong><br><br>
-      スライドとしてプレビューするには:<br>
-      ・ファイル名を <code>*.marp.md</code> に変更する<br>
-      ・または右クリック → 「別のエディターで開く」→「Office File Preview (Marp Slides)」を選択<br>
+      <strong>💡 Marp Slides Detected</strong><br><br>
+      To preview as interactive slides:<br>
+      • Rename the file to <code>*.marp.md</code><br>
+      • Or right-click → "Reopen Editor With..." → select "Office File Preview (Marp Slides)"<br>
       <br>
-      <small>以下は通常の Markdown としてレンダリングされます</small>
+      <small>Rendering as standard Markdown below</small>
     `;
     container.appendChild(notice);
   }
@@ -33,11 +40,13 @@ export async function renderMarkdown(bytes: Uint8Array, container: HTMLElement):
   });
 
   // Pull out mermaid code blocks before handing off to marked so they are not
-  // HTML-escaped. Each block is replaced with a placeholder <div>.
+  // HTML-escaped. Each block is replaced with a placeholder <div>. Up to three
+  // leading spaces, tilde fences, and a space before the info string are all
+  // valid markdown that must still render as a diagram.
   const mermaidDefs: string[] = [];
   const preprocessed = text.replace(
-    /^```mermaid[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm,
-    (_, definition: string) => {
+    /^[ \t]{0,3}(`{3,}|~{3,})[ \t]*mermaid\b[^\n]*\r?\n([\s\S]*?)^[ \t]{0,3}\1[ \t]*$/gm,
+    (_, fence: string, definition: string) => {
       const index = mermaidDefs.length;
       mermaidDefs.push(definition.trim());
       return `<div class="mermaid-placeholder" data-mermaid-index="${index}"></div>`;
@@ -46,7 +55,12 @@ export async function renderMarkdown(bytes: Uint8Array, container: HTMLElement):
 
   const article = document.createElement('article');
   article.className = 'markdown-body';
-  article.innerHTML = marked.parse(preprocessed) as string;
+  // marked does not sanitize; DOMPurify is the second line of defense behind
+  // the webview CSP. The mermaid placeholders (div/class/data-*) survive it.
+  article.innerHTML = DOMPurify.sanitize(marked.parse(preprocessed) as string);
+  if (context.baseUri) {
+    rewriteResourceUrls(article, context.baseUri);
+  }
   container.appendChild(article);
 
   // Render each mermaid placeholder in document order.
@@ -62,7 +76,8 @@ export async function renderMarkdown(bytes: Uint8Array, container: HTMLElement):
       el.innerHTML = svg;
       el.className = 'mermaid-wrap';
     } catch (err) {
-      el.innerHTML = `<pre class="mermaid-error">${String(err)}</pre>`;
+      el.className = 'mermaid-error';
+      el.textContent = String(err);
     }
   }
 }

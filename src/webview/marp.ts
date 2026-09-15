@@ -1,6 +1,6 @@
 import { Marp } from '@marp-team/marp-core';
 import type { RenderContext } from './bootstrap';
-import { resolveResourceUri, rewriteCssUrls } from './resourceUri';
+import { rewriteResourceUrls, rewriteCssUrls } from './resourceUri';
 
 type ScaleMode = 'fit' | 'width' | 'custom';
 
@@ -14,11 +14,11 @@ export async function renderMarp(
   bytes: Uint8Array,
   container: HTMLElement,
   context: RenderContext
-): Promise<void> {
+): Promise<() => void> {
   const markdown = new TextDecoder().decode(bytes);
 
   if (!/^---\s*\n[\s\S]*?marp:\s*true[\s\S]*?\n---/m.test(markdown)) {
-    throw new Error('Marp front matter (marp: true) が見つかりません。');
+    throw new Error('Marp front matter (marp: true) not found.');
   }
 
   const dark =
@@ -29,41 +29,49 @@ export async function renderMarp(
   const html = rendered.html;
   const css = rewriteCssUrls(rendered.css, context.baseUri);
 
-  // Marp の CSS は `div.marpit > svg > foreignObject > section` を前提とする。
-  // SVG だけを取り出さず、生成された div.marpit をそのまま Shadow DOM 内に保持する。
+  // Marp CSS assumes `div.marpit > svg > foreignObject > section` DOM hierarchy.
+  // Keep the generated div.marpit inside Shadow DOM without unwrapping SVGs.
   const parsed = document.createElement('template');
   parsed.innerHTML = html;
   const sourceMarpit = parsed.content.querySelector<HTMLDivElement>('div.marpit');
   if (!sourceMarpit) {
-    throw new Error('Marp の生成HTMLに div.marpit が見つかりません。');
+    throw new Error('Marp rendered HTML missing div.marpit.');
   }
-  rewriteMarpResources(sourceMarpit, context.baseUri);
+  if (context.baseUri) {
+    rewriteResourceUrls(sourceMarpit, context.baseUri);
+  }
 
   const total = sourceMarpit.querySelectorAll(':scope > svg[data-marpit-svg]').length;
   if (total === 0) {
-    throw new Error('Marp スライドが生成されませんでした。');
+    throw new Error('No Marp slides generated.');
   }
 
   container.replaceChildren();
   container.classList.add('marp-container');
+  // Preserve any zoom the interactive layer had written: cssText assignment
+  // wipes every inline style on the element.
+  const previousZoom = container.style.zoom;
   container.style.cssText = 'display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;';
+  if (previousZoom) {
+    container.style.zoom = previousZoom;
+  }
 
   const nav = document.createElement('div');
   nav.className = 'marp-preview-nav';
 
-  const prevButton = button('◀ 前', '前のスライド（← / PageUp）');
+  const prevButton = button('◀ Prev', 'Previous slide (← / PageUp)');
   const page = document.createElement('span');
   page.className = 'marp-preview-page';
-  const nextButton = button('次 ▶', '次のスライド（→ / PageDown / Space）');
+  const nextButton = button('Next ▶', 'Next slide (→ / PageDown / Space)');
   const separator1 = separator();
-  const zoomOutButton = button('−', '縮小（−）');
+  const zoomOutButton = button('−', 'Zoom out (−)');
   const scale = document.createElement('span');
   scale.className = 'marp-preview-scale';
-  const zoomInButton = button('＋', '拡大（＋）');
-  const fitButton = button('全体', 'スライド全体を表示（0）');
-  const widthButton = button('幅', '幅に合わせる（W）');
+  const zoomInButton = button('＋', 'Zoom in (＋)');
+  const fitButton = button('Fit', 'Fit slide to window (0)');
+  const widthButton = button('Width', 'Fit slide to width (W)');
   const separator2 = separator();
-  const modeButton = button('一覧', '全スライドの一覧表示');
+  const modeButton = button('Grid', 'Toggle all slides grid / presentation');
 
   nav.append(
     prevButton,
@@ -192,7 +200,7 @@ div.marpit {
     marpit.style.height = `${Math.max(shadowViewport.clientHeight, renderedHeight + SLIDE_PADDING)}px`;
 
     scale.textContent =
-      scaleMode === 'fit' ? '全体' : scaleMode === 'width' ? '幅' : `${zoomPercent}%`;
+      scaleMode === 'fit' ? 'Fit' : scaleMode === 'width' ? 'Width' : `${zoomPercent}%`;
     fitButton.classList.toggle('selected', scaleMode === 'fit');
     widthButton.classList.toggle('selected', scaleMode === 'width');
     zoomOutButton.disabled = zoomPercent <= MIN_ZOOM;
@@ -218,8 +226,8 @@ div.marpit {
   const render = () => {
     shadowViewport.className = listMode ? 'viewport list' : 'viewport single';
     slides.forEach((slide, index) => slide.classList.toggle('active', !listMode && index === current));
-    page.textContent = listMode ? `${total} スライド` : `${current + 1} / ${total}`;
-    modeButton.textContent = listMode ? 'スライド' : '一覧';
+    page.textContent = listMode ? `${total} slides` : `${current + 1} / ${total}`;
+    modeButton.textContent = listMode ? 'Slide' : 'Grid';
     prevButton.disabled = listMode || current === 0;
     nextButton.disabled = listMode || current === total - 1;
     zoomOutButton.disabled = listMode || zoomPercent <= MIN_ZOOM;
@@ -271,6 +279,20 @@ div.marpit {
 
   const keydown = (event: KeyboardEvent) => {
     if (listMode) return;
+    // Holding a navigation key (or OS key repeat on Space) must not
+    // machine-gun through slides; zoom/fit keys stay repeatable.
+    if (
+      event.repeat &&
+      (event.key === ' ' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown' ||
+        event.key === 'PageUp' ||
+        event.key === 'PageDown')
+    ) {
+      return;
+    }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'PageUp') {
       if (current > 0) current -= 1;
       event.preventDefault();
@@ -315,24 +337,13 @@ div.marpit {
   resizeObserver.observe(viewport);
 
   render();
-}
 
-function rewriteMarpResources(root: HTMLElement, baseUri?: string): void {
-  if (!baseUri) {
-    return;
-  }
-
-  for (const image of root.querySelectorAll<HTMLImageElement>('img[src]')) {
-    const source = image.getAttribute('src');
-    if (!source) continue;
-    image.setAttribute('src', resolveResourceUri(source, baseUri));
-  }
-
-  for (const element of root.querySelectorAll<HTMLElement>('[style]')) {
-    const inlineStyle = element.getAttribute('style');
-    if (!inlineStyle) continue;
-    element.setAttribute('style', rewriteCssUrls(inlineStyle, baseUri));
-  }
+  // The keydown listener is on document and the observer pins the viewport
+  // DOM; both must go if this preview is ever re-rendered in place.
+  return () => {
+    document.removeEventListener('keydown', keydown);
+    resizeObserver.disconnect();
+  };
 }
 
 function button(label: string, title: string): HTMLButtonElement {
