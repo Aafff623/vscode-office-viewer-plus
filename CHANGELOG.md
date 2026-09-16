@@ -1,8 +1,7 @@
 # Changelog
 
 
-## 1.0.0 (2026-09-15)
-
+## 1.1.0 (2026-09-16)
 ### Added
 - Canvas interactions for all previews: Space + drag / middle-button pan, Ctrl/Cmd + wheel zoom (30%–350%) with a HUD badge, and `Ctrl+0` reset
 - Double-click zoom toggle (jump to 150%, double-click again to restore) for Word, Excel, PowerPoint and PDF previews

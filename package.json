@@ -2,7 +2,7 @@
   "name": "vscode-office-viewer-plus",
   "displayName": "Office File Preview Plus",
   "description": "Enhanced Office preview for .docx, .xlsx, .pdf, .pptx with Figma-like Hand Tool pan, smooth zoom and modern UI inside VS Code",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "Aafff623",
   "author": {
     "name": "Aafff623",
