@@ -21,6 +21,7 @@
   "keywords": [
     "docx",
     "xlsx",
+    "xls",
     "csv",
     "tsv",
     "pdf",
@@ -64,6 +65,9 @@
           },
           {
             "filenamePattern": "*.xlsm"
+          },
+          {
+            "filenamePattern": "*.xls"
           }
         ],
         "priority": "default"
