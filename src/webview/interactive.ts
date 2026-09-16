@@ -374,7 +374,7 @@ export function setupOfficeInteractive(
       const target = e.target as Element | null;
       if (
         target?.closest?.(
-          'a, button, input, select, textarea, label, .page-pane, .xlsx-tabs, .csv-controls'
+          'a, button, input, select, textarea, label, .page-pane, .xlsx-tabs, .csv-controls, .docx-outline, .docx-searchbar'
         )
       ) {
         return;

@@ -243,7 +243,7 @@ export function setupPagePane(
 
 /** Native smooth scrollIntoView is suppressed in some webview hosts, so
  * animate the scroll with rAF instead. */
-function smoothScrollTo(targetY: number): void {
+export function smoothScrollTo(targetY: number): void {
   const startY = window.scrollY;
   const delta = targetY - startY;
   if (Math.abs(delta) < 2) {

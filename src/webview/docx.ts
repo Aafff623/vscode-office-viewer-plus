@@ -13,6 +13,11 @@ export async function renderDocx(bytes: Uint8Array, container: HTMLElement): Pro
     // to the stop position and draws a dotted-underline leader — this is what
     // renders Word TOC dot leaders correctly.
     experimental: true,
+    // Read-only display of comments (highlighted ranges + hover popovers via
+    // the CSS Custom Highlight API) and tracked changes (strikethrough for
+    // deletions, underlines for insertions).
+    renderComments: true,
+    renderChanges: true,
   });
 
   // Fallback pass for TOC lines whose tab stops the library could not
