@@ -195,6 +195,10 @@ p.docx-toc-enhanced > :last-child {
 .xlsx-sheet {
   overflow: auto;
   padding-top: 8px;
+  /* Cap the sheet to the viewport so the sticky header below actually
+     freezes (a header inside an overflow container cannot stick while only
+     the window scrolls), and leave room for the sheet tabs. */
+  max-height: calc(100vh - 56px);
 }
 .xlsx-sheet table {
   border-collapse: collapse;
@@ -207,6 +211,26 @@ p.docx-toc-enhanced > :last-child {
   padding: 2px 6px;
   font-size: 12px;
   white-space: nowrap;
+}
+/* ---- frozen, sortable header row ---- */
+.xlsx-sheet thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--vscode-editor-background, #ffffff);
+  cursor: pointer;
+  user-select: none;
+}
+.xlsx-sheet thead th:hover {
+  filter: brightness(0.95);
+}
+.xlsx-sheet thead th:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #1a73e8);
+  outline-offset: -2px;
+}
+.xlsx-sort-indicator {
+  font-size: 10px;
+  color: var(--vscode-focusBorder, #1a73e8);
 }
 .csv-controls {
   position: sticky;
