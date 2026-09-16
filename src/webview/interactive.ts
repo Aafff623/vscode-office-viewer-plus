@@ -6,7 +6,8 @@
  * - Middle Mouse Button direct pan
  * - Ctrl / Cmd + Mouse Wheel smooth zoom (30% ~ 350%)
  * - Ctrl + 0 quick reset to 100% zoom
- * - Optional double-click zoom toggle for the office formats
+ * - Optional double-click zoom toggle for the office formats, anchored at
+ *   the cursor position
  * - Glassmorphic HUD zoom badge with auto-fade
  * - Defensive drag guards (click suppression on drag, selection freeze, blur auto-release)
  *
@@ -47,7 +48,7 @@ export function computeOverlayZoom(clientWidth: number, scrollWidth: number): nu
 }
 
 export interface InteractiveOptions {
-  /** Enable double-click to toggle 150% zoom (used by the office formats). */
+  /** Enable double-click to toggle 150% zoom, anchored at the cursor (office formats). */
   doubleClickZoom?: boolean;
 }
 
@@ -63,6 +64,25 @@ export function computeDblClickZoom(
     return { zoom: DBLCLICK_ZOOM, saved: curZoom };
   }
   return { zoom: savedZoom, saved: null };
+}
+
+/**
+ * Scroll compensation that anchors a zoom change at the cursor. CSS zoom
+ * scales the content out of the container's top-left, so the visual gap
+ * between the cursor and the container origin scales with the zoom ratio;
+ * scrolling by that delta keeps the content point under the pointer
+ * stationary (works for zoom-out too, where the delta is negative).
+ */
+export function computeZoomAnchorPan(
+  pointerX: number,
+  pointerY: number,
+  containerLeft: number,
+  containerTop: number,
+  oldZoom: number,
+  newZoom: number
+): { dx: number; dy: number } {
+  const k = newZoom / oldZoom - 1;
+  return { dx: (pointerX - containerLeft) * k, dy: (pointerY - containerTop) * k };
 }
 
 export function setupOfficeInteractive(
@@ -361,7 +381,8 @@ export function setupOfficeInteractive(
     { capture: true }
   );
 
-  // Double-click toggles 150% zoom (office formats opt in via options)
+  // Double-click toggles 150% zoom (office formats opt in via options),
+  // anchored at the cursor: the content point under the pointer stays put.
   if (options.doubleClickZoom) {
     window.addEventListener('dblclick', (e: MouseEvent) => {
       // Double-clicks on interactive chrome (links, buttons, sheet tabs,
@@ -375,9 +396,26 @@ export function setupOfficeInteractive(
         return;
       }
       fittedZoom = null;
+      const prevZoom = curZoom;
       const result = computeDblClickZoom(curZoom, savedZoom);
       savedZoom = result.saved;
+      // The rect must be read before the zoom change: it positions the
+      // content the cursor is currently looking at.
+      const rect = getContainer()?.getBoundingClientRect();
       setZoom(result.zoom);
+      if (rect && Math.abs(result.zoom - prevZoom) > 1e-9) {
+        const { dx, dy } = computeZoomAnchorPan(
+          e.clientX,
+          e.clientY,
+          rect.left,
+          rect.top,
+          prevZoom,
+          result.zoom
+        );
+        scrollChain = collectScrollChain(target);
+        applyPan(dx, dy);
+        scrollChain = [];
+      }
       showTip(`Zoom: ${Math.round(result.zoom * 100)}%`);
     });
   }

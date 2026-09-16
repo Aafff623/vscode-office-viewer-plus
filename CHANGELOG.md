@@ -12,6 +12,7 @@
 - PowerPoint: EMF/WMF vector images embedded in slides are now rasterized and displayed instead of breaking
 
 ### Changed
+- Word/Excel/PowerPoint/PDF: double-click zoom is anchored at the cursor — the content under the pointer stays put when jumping to 150% and when restoring, instead of the view always zooming from the top-left (when the content has no room to scroll, the extra offset clamps, same as native browser zoom)
 - Word/PDF: the outline and thumbnail toggles are redesigned as slim fold handles stuck to the screen edges (bright blue, half-rounded grips with a direction chevron); both panels always start folded — nothing pops open on its own, opening either one is the user's call
 - PDF engine upgraded to pdf.js 6.2.108 with on-demand assets: WASM decoders for scanned-document images (JBIG2/JPX), CJK CMap tables and standard font data — documents that previously showed missing text or images now render
 - Word rendering engine upgraded to docx-preview 0.3.7

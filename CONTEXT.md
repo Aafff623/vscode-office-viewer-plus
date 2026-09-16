@@ -32,8 +32,16 @@ when reality changes; do not add unverified claims.
   entries (`entry-*.ts` → `dist/webview-*.js`, one bundle per format so e.g.
   CSV never loads marp-core).
 - `interactive.ts` adds the gesture layer (Space/middle pan, Ctrl+wheel
-  30–350% via CSS `zoom` on `#container`, Ctrl+0, double-click 150%).
-  Marp manages its own zoom/keyboard and is exempt.
+  30–350% via CSS `zoom` on `#container`, Ctrl+0, double-click 150%
+  anchored at the cursor). Marp manages its own zoom/keyboard and is exempt.
+- Double-click zoom anchoring: CSS `zoom` scales content out of the
+  container's top-left, so after a zoom change the cursor-to-origin gap
+  must be scrolled back: read `#container`'s `getBoundingClientRect()`
+  BEFORE `setZoom`, then scroll by `(clientX - rect.left) * (new/old - 1)`
+  (`computeZoomAnchorPan`, distributed over the scroll chain). When the
+  content has no overflow in an axis the scroll clamps and the pointer
+  drifts there — same as native browser zoom, not a bug. Ctrl+wheel stays
+  top-left anchored by design.
 - Thumbnails (`thumbs.ts` + `domRaster.ts`): left pane with one card per
   page. PDF cards downsample the already-rendered canvases; DOCX cards are
   rasterized from the live DOM by html2canvas-pro — lazily, serially, with
