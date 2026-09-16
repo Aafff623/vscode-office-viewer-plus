@@ -16,7 +16,7 @@ async function bundleModule(entryPoint) {
   return import(moduleUrl);
 }
 
-const { pickActivePage, planRasterRetry } = await bundleModule('src/webview/thumbs.ts');
+const { pickActivePage, planRasterRetry, thumbPixelRatio } = await bundleModule('src/webview/thumbs.ts');
 const { computeFitNudge } = await bundleModule('src/webview/interactive.ts');
 
 test('pickActivePage selects the last page crossing the viewport line', () => {
@@ -50,4 +50,15 @@ test('planRasterRetry allows two retries then gives up', () => {
   assert.deepEqual(planRasterRetry(1), { retry: true });
   assert.deepEqual(planRasterRetry(2), { retry: false });
   assert.deepEqual(planRasterRetry(99), { retry: false });
+});
+
+test('thumbPixelRatio clamps device ratios to [1, 2]', () => {
+  // 1x screens render at card width; 1.5x/2x render proportionally larger for
+  // sharpness; anything above 2x (or invalid) is capped to bound pixel cost.
+  assert.equal(thumbPixelRatio(1), 1);
+  assert.equal(thumbPixelRatio(0.75), 1);
+  assert.equal(thumbPixelRatio(1.5), 1.5);
+  assert.equal(thumbPixelRatio(2), 2);
+  assert.equal(thumbPixelRatio(3), 2);
+  assert.equal(thumbPixelRatio(Number.NaN), 1);
 });

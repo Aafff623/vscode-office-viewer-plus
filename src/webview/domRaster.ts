@@ -1,15 +1,20 @@
 import html2canvas from 'html2canvas-pro';
-import { CARD_WIDTH } from './thumbs';
+import { CARD_WIDTH, thumbPixelRatio } from './thumbs';
 
 /**
  * Rasterize a live DOM page (a docx-preview <section>) into a real bitmap
  * thumbnail showing the actual content (text, tables, images). Kept in its
  * own module so only the docx entry — the only format needing DOM
  * rasterization — pulls html2canvas-pro into its bundle.
+ *
+ * The capture is rendered at the device pixel ratio (capped at 2x) so the
+ * card stays sharp on HiDPI screens; the page-card CSS scales it back down
+ * to the card width.
  */
 export async function rasterizeDomPage(page: HTMLElement): Promise<HTMLCanvasElement> {
   const rect = page.getBoundingClientRect();
-  const scale = CARD_WIDTH / Math.max(1, rect.width || 794);
+  const ratio = thumbPixelRatio(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+  const scale = (CARD_WIDTH * ratio) / Math.max(1, rect.width || 794);
   const canvas = await html2canvas(page, {
     scale,
     backgroundColor: '#ffffff',

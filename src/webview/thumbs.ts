@@ -17,6 +17,26 @@
 const PANE_WIDTH = 188;
 const CARD_WIDTH = 140;
 
+/**
+ * Thumbnail bitmaps are rendered at `devicePixelRatio` times the CSS card
+ * width so they stay sharp on HiDPI screens (a 140px bitmap upscaled 2x by
+ * the compositor is the blur users notice). Capped at 2x: beyond that the
+ * pixel cost grows quadratically with little visible gain.
+ */
+const MAX_THUMB_PIXEL_RATIO = 2;
+
+/** Clamps a device pixel ratio into the supported thumbnail render range. */
+export function thumbPixelRatio(dpr: number): number {
+  if (!Number.isFinite(dpr) || dpr <= 1) {
+    return 1;
+  }
+  return Math.min(dpr, MAX_THUMB_PIXEL_RATIO);
+}
+
+function currentThumbPixelRatio(): number {
+  return thumbPixelRatio(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
+}
+
 export interface PagePaneHandle {
   destroy(): void;
 }
@@ -255,8 +275,12 @@ function readSavedOpenState(host?: PaneHost): boolean | null {
 }
 
 function renderCanvasThumb(source: HTMLCanvasElement): HTMLCanvasElement {
-  const width = CARD_WIDTH;
-  const height = Math.max(24, Math.round((source.height / Math.max(1, source.width)) * width));
+  const ratio = currentThumbPixelRatio();
+  const width = CARD_WIDTH * ratio;
+  const height = Math.max(
+    24 * ratio,
+    Math.round((source.height / Math.max(1, source.width)) * width)
+  );
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -265,6 +289,7 @@ function renderCanvasThumb(source: HTMLCanvasElement): HTMLCanvasElement {
   if (ctx) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(source, 0, 0, width, height);
   }
   return canvas;
@@ -422,12 +447,12 @@ function makeCardVisibilityWatcher(
 
 /** Instant placeholder sketch: page geometry drawn as colored structure blocks. */
 function renderDomThumb(page: HTMLElement): HTMLCanvasElement {
+  const ratio = currentThumbPixelRatio();
   const rect = page.getBoundingClientRect();
-  const width = CARD_WIDTH;
-  const height = Math.max(
-    40,
-    Math.min(560, Math.round((rect.height / Math.max(1, rect.width)) * width))
-  );
+  const width = CARD_WIDTH * ratio;
+  const height =
+    Math.max(40, Math.min(560, Math.round((rect.height / Math.max(1, rect.width)) * CARD_WIDTH))) *
+    ratio;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
