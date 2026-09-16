@@ -69,20 +69,24 @@ export function computeDblClickZoom(
 /**
  * Scroll compensation that anchors a zoom change at the cursor. CSS zoom
  * scales the content out of the container's top-left, so the visual gap
- * between the cursor and the container origin scales with the zoom ratio;
- * scrolling by that delta keeps the content point under the pointer
- * stationary (works for zoom-out too, where the delta is negative).
+ * between the cursor and the origin scales with the zoom ratio (gapX/gapY,
+ * measured before the zoom change); scrolling by that scaled delta keeps the
+ * content point under the pointer stationary. originShiftX/Y is the origin's
+ * own movement between the pre-zoom and post-zoom measurements — a scrollbar
+ * appearing/disappearing or margins re-balancing shift it too, and the anchor
+ * must track where the content actually landed, not where the formula
+ * assumes. Works for zoom-out as well, where the ratio is negative.
  */
 export function computeZoomAnchorPan(
-  pointerX: number,
-  pointerY: number,
-  containerLeft: number,
-  containerTop: number,
+  gapX: number,
+  gapY: number,
+  originShiftX: number,
+  originShiftY: number,
   oldZoom: number,
   newZoom: number
 ): { dx: number; dy: number } {
   const k = newZoom / oldZoom - 1;
-  return { dx: (pointerX - containerLeft) * k, dy: (pointerY - containerTop) * k };
+  return { dx: originShiftX + gapX * k, dy: originShiftY + gapY * k };
 }
 
 export function setupOfficeInteractive(
@@ -399,16 +403,20 @@ export function setupOfficeInteractive(
       const prevZoom = curZoom;
       const result = computeDblClickZoom(curZoom, savedZoom);
       savedZoom = result.saved;
-      // The rect must be read before the zoom change: it positions the
-      // content the cursor is currently looking at.
-      const rect = getContainer()?.getBoundingClientRect();
+      // Both rects are needed: the gap between cursor and origin must be
+      // measured before the zoom change (it positions the content the cursor
+      // is looking at), and the origin must be measured again after it, so
+      // layout shifts coinciding with the zoom (a scrollbar appearing or
+      // disappearing, margins re-balancing, scroll anchoring) are absorbed.
+      const rectBefore = getContainer()?.getBoundingClientRect();
       setZoom(result.zoom);
-      if (rect && Math.abs(result.zoom - prevZoom) > 1e-9) {
+      const rectAfter = getContainer()?.getBoundingClientRect();
+      if (rectBefore && Math.abs(result.zoom - prevZoom) > 1e-9) {
         const { dx, dy } = computeZoomAnchorPan(
-          e.clientX,
-          e.clientY,
-          rect.left,
-          rect.top,
+          e.clientX - rectBefore.left,
+          e.clientY - rectBefore.top,
+          rectAfter ? rectAfter.left - rectBefore.left : 0,
+          rectAfter ? rectAfter.top - rectBefore.top : 0,
           prevZoom,
           result.zoom
         );

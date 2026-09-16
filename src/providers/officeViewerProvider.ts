@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 export type ViewerKind =
   | 'docx'
@@ -109,17 +110,33 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
     return idx >= 0 ? path.slice(idx + 1) : path;
   }
 
+  /**
+   * Short content hash of a bundled asset. The webview resource loader caches
+   * by URL, so a same-version reinstall that only swaps file bytes can keep
+   * serving the previous build's script — every file that changes per build
+   * must carry its hash as a query so each build gets a fresh URL.
+   */
+  private assetVersion(...parts: string[]): string {
+    try {
+      const file = vscode.Uri.joinPath(this.context.extensionUri, ...parts);
+      return createHash('sha256').update(readFileSync(file.fsPath)).digest('hex').slice(0, 10);
+    } catch {
+      return '0';
+    }
+  }
+
   private getHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', `webview-${this.kind}.js`)
-    );
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer.css')
-    );
-    const workerUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdf.worker.min.mjs')
-    );
+    const scriptName = `webview-${this.kind}.js`;
+    const scriptUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', scriptName))
+      .with({ query: this.assetVersion('dist', scriptName) });
+    const styleUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer.css'))
+      .with({ query: this.assetVersion('media', 'viewer.css') });
+    const workerUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdf.worker.min.mjs'))
+      .with({ query: this.assetVersion('media', 'pdf.worker.min.mjs') });
     // pdf.js 6 loads its image decoders from here; the URL is concatenated
     // with the filename, so it must end with a slash.
     const wasmUri = webview.asWebviewUri(

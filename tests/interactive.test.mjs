@@ -63,25 +63,33 @@ test('Ctrl+wheel zoom steps clamp at the configured bounds', () => {
 });
 
 test('zoom anchor pan scales the cursor-to-origin gap by the zoom ratio', () => {
-  // Cursor 200px right / 100px down of the container origin.
-  const into = computeZoomAnchorPan(300, 200, 100, 100, 1.0, 1.5);
+  // Cursor 200px right / 100px down of the container origin, origin unmoved.
+  const into = computeZoomAnchorPan(200, 100, 0, 0, 1.0, 1.5);
   assert.ok(Math.abs(into.dx - 100) < 1e-9);
   assert.ok(Math.abs(into.dy - 50) < 1e-9);
 
-  const out = computeZoomAnchorPan(300, 200, 100, 100, 1.5, 1.0);
+  const out = computeZoomAnchorPan(200, 100, 0, 0, 1.5, 1.0);
   // Zoom-out ratio is 1/1.5 - 1 = -1/3, not symmetric with zoom-in.
   assert.ok(Math.abs(out.dx - 200 * (1 / 1.5 - 1)) < 1e-9);
   assert.ok(Math.abs(out.dy - 100 * (1 / 1.5 - 1)) < 1e-9);
 });
 
 test('zoom anchor pan is zero at the container origin or without a zoom change', () => {
-  const atOrigin = computeZoomAnchorPan(100, 100, 100, 100, 1.0, 1.5);
+  const atOrigin = computeZoomAnchorPan(0, 0, 0, 0, 1.0, 1.5);
   assert.equal(atOrigin.dx, 0);
   assert.equal(atOrigin.dy, 0);
 
-  const sameZoom = computeZoomAnchorPan(300, 200, 100, 100, 1.0, 1.0);
+  const sameZoom = computeZoomAnchorPan(200, 100, 0, 0, 1.0, 1.0);
   assert.equal(sameZoom.dx, 0);
   assert.equal(sameZoom.dy, 0);
+});
+
+test('zoom anchor pan absorbs an origin shift that coincided with the zoom', () => {
+  // A scrollbar appearing moved the origin 8px left / 17px up between the
+  // two measurements: the pan must add that shift on top of the scaled gap.
+  const { dx, dy } = computeZoomAnchorPan(200, 100, -8, -17, 1.0, 1.5);
+  assert.ok(Math.abs(dx - (-8 + 100)) < 1e-9);
+  assert.ok(Math.abs(dy - (-17 + 50)) < 1e-9);
 });
 
 test('zoom anchor pan keeps the layout point under the cursor invariant', () => {
@@ -91,7 +99,7 @@ test('zoom anchor pan keeps the layout point under the cursor invariant', () => 
   const rectLeft = 100;
   const oldZoom = 1.0;
   const newZoom = 1.5;
-  const { dx } = computeZoomAnchorPan(clientX, 0, rectLeft, 0, oldZoom, newZoom);
+  const { dx } = computeZoomAnchorPan(clientX - rectLeft, 0, 0, 0, oldZoom, newZoom);
   const rectLeftAfter = rectLeft - dx;
   assert.ok(
     Math.abs((clientX - rectLeft) / oldZoom - (clientX - rectLeftAfter) / newZoom) < 1e-9
