@@ -7,10 +7,11 @@
  * works for documents in any language. Clicking an item smooth-scrolls to
  * the heading; the item of the heading crossing the viewport is highlighted
  * while scrolling (rAF-throttled spy, mirroring the thumbnail pane). The
- * panel's open/closed state is remembered via vscode setState.
+ * panel always starts folded; opening it is the user's call via the edge
+ * handle.
  */
 
-import { smoothScrollTo, type PaneHost } from './thumbs';
+import { CHEVRON_SVG, smoothScrollTo } from './thumbs';
 
 const SPY_LINE = 0.35;
 const HEADING_CLASS = /docx_heading([1-6])\b/;
@@ -38,21 +39,11 @@ function collectHeadings(container: HTMLElement): OutlineEntry[] {
   return entries;
 }
 
-export function setupDocxOutline(container: HTMLElement, host?: PaneHost): OutlineHandle | null {
+export function setupDocxOutline(container: HTMLElement): OutlineHandle | null {
   const entries = collectHeadings(container);
   if (entries.length === 0) {
     return null;
   }
-
-  const saved = (() => {
-    try {
-      const state = host?.getState() as { outlineOpen?: unknown } | undefined;
-      return typeof state?.outlineOpen === 'boolean' ? state.outlineOpen : null;
-    } catch {
-      return null;
-    }
-  })();
-  const initialOpen = saved ?? entries.length > 0;
 
   const panel = document.createElement('nav');
   panel.className = 'docx-outline';
@@ -77,12 +68,14 @@ export function setupDocxOutline(container: HTMLElement, host?: PaneHost): Outli
     tops.push(entry.element);
   });
 
+  // Fold handle on the screen edge: chevron points left while folded
+  // (pull to unfold), flips when the panel is open (CSS rotate).
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'docx-outline-toggle';
   toggle.title = '切换大纲面板';
   toggle.setAttribute('aria-label', toggle.title);
-  toggle.textContent = '☰';
+  toggle.innerHTML = CHEVRON_SVG;
   document.body.append(panel, toggle);
 
   let raf = 0;
@@ -127,15 +120,11 @@ export function setupDocxOutline(container: HTMLElement, host?: PaneHost): Outli
         detail: { open, newWidth: container.clientWidth },
       })
     );
-    try {
-      host?.setState?.({ outlineOpen: open });
-    } catch {
-      // Host API unavailable (test harness) — only the memory is lost.
-    }
   }
 
   toggle.addEventListener('click', () => apply(!panel.classList.contains('open')));
-  apply(initialOpen);
+  // Start folded: whether to open the panel is always the user's call.
+  apply(false);
   onScroll();
 
   return {

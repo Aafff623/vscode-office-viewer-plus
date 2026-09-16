@@ -88,24 +88,44 @@ body:not(.pane-open) .page-pane {
   background: var(--vscode-focusBorder, #1a73e8);
   color: #ffffff;
 }
-.page-pane-toggle {
+/* Panel fold handles: slim bright grips stuck to the screen edges at mid
+   height. The chevron points toward the document while folded (pull to
+   unfold) and flips once the panel is open. Accent blue on purpose — the
+   handle is the only visible affordance for the panels, gray read as dead
+   decoration. */
+.page-pane-toggle,
+.docx-outline-toggle {
   position: fixed;
-  left: 10px;
-  top: 10px;
+  top: 50%;
   z-index: 21;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 48px;
   padding: 0;
-  border: 1px solid var(--vscode-panel-border, #444);
-  border-radius: 4px;
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-  color: var(--vscode-icon-foreground, #ccc);
-  font-size: 13px;
-  line-height: 1;
+  border: none;
+  display: grid;
+  place-items: center;
+  background: #1a73e8;
+  color: #ffffff;
   cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: background 0.12s ease;
+}
+.page-pane-toggle:hover,
+.docx-outline-toggle:hover {
+  background: #2f81f7;
+}
+.page-pane-toggle {
+  left: 0;
+  border-radius: 0 10px 10px 0;
+}
+.page-pane-toggle svg {
+  transition: transform 0.15s ease;
 }
 body.pane-open .page-pane-toggle {
-  left: 198px;
+  left: 188px;
+}
+body.pane-open .page-pane-toggle svg {
+  transform: rotate(180deg);
 }
 body.pane-open #container {
   margin-left: 188px;
@@ -166,29 +186,23 @@ body.docx-outline-open #container {
   color: var(--vscode-descriptionForeground, #999);
 }
 .docx-outline-toggle {
-  position: fixed;
-  right: 10px;
-  top: 10px;
-  z-index: 21;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--vscode-panel-border, #444);
-  border-radius: 4px;
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-  color: var(--vscode-icon-foreground, #ccc);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
+  right: 0;
+  border-radius: 10px 0 0 10px;
+}
+.docx-outline-toggle svg {
+  transform: rotate(180deg);
 }
 body.docx-outline-open .docx-outline-toggle {
-  right: 250px;
+  right: 240px;
+}
+body.docx-outline-open .docx-outline-toggle svg {
+  transform: rotate(0deg);
 }
 
 /* ---- word in-document search bar ---- */
 .docx-searchbar {
   position: fixed;
-  right: 46px;
+  right: 12px;
   top: 8px;
   z-index: 22;
   display: flex;

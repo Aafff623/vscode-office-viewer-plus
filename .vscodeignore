@@ -18,3 +18,5 @@ BUG_REPORT.md
 DOCX_TOC_RENDER_OPTIMIZATION.md
 HANDOFF.md
 PROJECT_ANALYSIS.md
+.codegraph/**
+.cursor/**

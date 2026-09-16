@@ -7,10 +7,10 @@ import { setupPagePane } from './thumbs';
 
 mount(renderDocx, {
   doubleClickZoom: true,
-  afterRender: (container, host) => {
+  afterRender: (container) => {
     const destroys = [
-      setupPagePane(container, host, { rasterizeDomPage })?.destroy,
-      setupDocxOutline(container, host)?.destroy,
+      setupPagePane(container, { rasterizeDomPage })?.destroy,
+      setupDocxOutline(container)?.destroy,
       setupDocxSearch(container)?.destroy,
     ];
     return () => destroys.forEach((destroy) => destroy?.());

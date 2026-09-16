@@ -4,5 +4,5 @@ import { setupPagePane } from './thumbs';
 
 mount(renderPdf, {
   doubleClickZoom: true,
-  afterRender: (container, host) => setupPagePane(container, host)?.destroy,
+  afterRender: (container) => setupPagePane(container)?.destroy,
 });

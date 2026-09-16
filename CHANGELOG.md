@@ -4,7 +4,7 @@
 ## 1.2.0 (2026-09-16)
 ### Added
 - Word: automatic pagination — chapters without explicit page breaks are split into real page-sized pages (matching the page box, repeating page headers/footers), instead of one continuous white sheet
-- Word: outline navigation panel — heading levels come from the document's real styles (works for any language), click a heading to jump, the current section stays highlighted while scrolling, open/closed is remembered
+- Word: outline navigation panel — heading levels come from the document's real styles (works for any language), click a heading to jump, the current section stays highlighted while scrolling
 - Word: in-document search — `Ctrl+F` opens a search bar with a match counter and `Enter` / `Shift+Enter` navigation; matches are highlighted without touching the document DOM
 - Word: comments and tracked changes are now shown (highlighted ranges with hover popovers)
 - Excel: click a column header to sort (ascending/descending, numbers compared numerically, mixed text via natural collation); the header row stays frozen while scrolling
@@ -12,6 +12,7 @@
 - PowerPoint: EMF/WMF vector images embedded in slides are now rasterized and displayed instead of breaking
 
 ### Changed
+- Word/PDF: the outline and thumbnail toggles are redesigned as slim fold handles stuck to the screen edges (bright blue, half-rounded grips with a direction chevron); both panels always start folded — nothing pops open on its own, opening either one is the user's call
 - PDF engine upgraded to pdf.js 6.2.108 with on-demand assets: WASM decoders for scanned-document images (JBIG2/JPX), CJK CMap tables and standard font data — documents that previously showed missing text or images now render
 - Word rendering engine upgraded to docx-preview 0.3.7
 - Page thumbnails render at the display's pixel density (up to 2x) — sharp on HiDPI screens instead of blurry upscales

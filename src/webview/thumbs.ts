@@ -10,12 +10,18 @@
  * sketch serves as the placeholder. Minimap-inspired behavior: click a card
  * to jump to that page, the card of the page currently in view is
  * highlighted and kept visible, and the whole strip can be collapsed to
- * give the preview the full width. Open/closed is remembered per webview
- * via vscode setState.
+ * give the preview the full width. The pane always starts folded; opening
+ * it is the user's call via the edge handle.
  */
 
 const PANE_WIDTH = 188;
 const CARD_WIDTH = 140;
+
+/** Shared chevron glyph for the panel fold handles (rotated via CSS). */
+export const CHEVRON_SVG =
+  '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">' +
+  '<path d="M3 1.5 7 5 3 8.5" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /**
  * Thumbnail bitmaps are rendered at `devicePixelRatio` times the CSS card
@@ -41,7 +47,7 @@ export interface PagePaneHandle {
   destroy(): void;
 }
 
-/** Subset of the vscode webview API used for remembering the pane state. */
+/** Subset of the vscode webview API passed through by bootstrap. */
 export interface PaneHost {
   setState(state: unknown): void;
   getState(): unknown;
@@ -95,16 +101,12 @@ export function detectPageElements(container: HTMLElement): DetectedPages | null
 
 export function setupPagePane(
   container: HTMLElement,
-  host?: PaneHost,
   options: PagePaneOptions = {}
 ): PagePaneHandle | null {
   const pages = detectPageElements(container);
   if (!pages || pages.elements.length === 0) {
     return null;
   }
-
-  const saved = readSavedOpenState(host);
-  const initialOpen = saved ?? window.innerWidth >= 900;
 
   const pane = document.createElement('div');
   pane.className = 'page-pane';
@@ -135,27 +137,20 @@ export function setupPagePane(
     cards.push(card);
   });
 
+  // Fold handle on the screen edge: chevron points right while folded
+  // (pull to unfold), flips when the pane is open (CSS rotate).
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'page-pane-toggle';
-  toggle.title = 'Toggle page thumbnails pane';
+  toggle.title = '切换页面缩略图面板';
   toggle.setAttribute('aria-label', toggle.title);
-  toggle.textContent = '▤';
+  toggle.innerHTML = CHEVRON_SVG;
   document.body.append(pane, toggle);
 
   const prevWidth = container.clientWidth;
 
   function isOpen(): boolean {
     return document.body.classList.contains('pane-open');
-  }
-
-  function persist(open: boolean): void {
-    try {
-      host?.setState?.({ pagePaneOpen: open });
-    } catch {
-      // Host API unavailable (e.g. test harness) — the pane still works,
-      // only the open/closed memory is lost.
-    }
   }
 
   // Rasterize DOM pages into real thumbnails lazily (see
@@ -191,7 +186,6 @@ export function setupPagePane(
         })
       );
     }
-    persist(open);
   }
 
   toggle.addEventListener('click', () => apply(!isOpen()));
@@ -223,7 +217,8 @@ export function setupPagePane(
   };
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  apply(initialOpen);
+  // Start folded: whether to open either panel is always the user's call.
+  apply(false);
   onScroll();
 
   return {
@@ -260,18 +255,6 @@ export function smoothScrollTo(targetY: number): void {
     }
   };
   requestAnimationFrame(step);
-}
-
-function readSavedOpenState(host?: PaneHost): boolean | null {
-  if (!host) {
-    return null;
-  }
-  try {
-    const state = host.getState() as { pagePaneOpen?: unknown } | undefined;
-    return typeof state?.pagePaneOpen === 'boolean' ? state.pagePaneOpen : null;
-  } catch {
-    return null;
-  }
 }
 
 function renderCanvasThumb(source: HTMLCanvasElement): HTMLCanvasElement {
