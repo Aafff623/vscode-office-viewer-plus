@@ -17,7 +17,7 @@ async function bundleModule(entryPoint) {
 }
 
 const { pickActivePage, planRasterRetry, thumbPixelRatio } = await bundleModule('src/webview/thumbs.ts');
-const { computeFitNudge } = await bundleModule('src/webview/interactive.ts');
+const { computeOverlayZoom } = await bundleModule('src/webview/interactive.ts');
 
 test('pickActivePage selects the last page crossing the viewport line', () => {
   // Page tops in viewport coordinates; the active page is the one whose top
@@ -30,17 +30,21 @@ test('pickActivePage selects the last page crossing the viewport line', () => {
   assert.equal(pickActivePage([], 100), 0);
 });
 
-test('fit nudge only applies at default zoom with overflowing content', () => {
-  // 1200px-wide document, pane takes 188px → shrink to fit.
-  assert.ok(Math.abs(computeFitNudge(1.0, null, 1200, 1012) - 1012 / 1200) < 1e-9);
-  // Document already fits → no change.
-  assert.equal(computeFitNudge(1.0, null, 800, 1012), null);
-  // Custom double-click zoom active → never touch the zoom.
-  assert.equal(computeFitNudge(1.0, 1.5, 1200, 1012), null);
-  // User zoomed manually → leave it alone.
-  assert.equal(computeFitNudge(1.3, null, 1200, 1012), null);
-  // Never exceed 100% when nudging.
-  assert.equal(computeFitNudge(1.0, null, 500, 1012), null);
+test('overlay zoom shrinks overflowing content, stateless and convergent', () => {
+  // 1200-wide content in a 1000 viewport → shrink proportionally with a
+  // 1% margin.
+  const shrink = computeOverlayZoom(1000, 1200);
+  assert.ok(Math.abs(shrink - (1000 / 1200) * 0.99) < 1e-9);
+  // The same viewport always yields the same zoom — repeated calls converge.
+  assert.equal(computeOverlayZoom(1000, 1200), shrink);
+  // Content fits (scrollWidth is clamped to clientWidth when it fits) → 100%.
+  assert.equal(computeOverlayZoom(1000, 1000), 1.0);
+  // Within rounding distance is treated as fitting.
+  assert.equal(computeOverlayZoom(1000, 1002), 1.0);
+  // Invalid metrics never zoom.
+  assert.equal(computeOverlayZoom(0, 1200), 1.0);
+  // Never zoom below the minimum.
+  assert.equal(computeOverlayZoom(100, 5000), 0.3);
 });
 
 test('planRasterRetry allows two retries then gives up', () => {

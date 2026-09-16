@@ -110,6 +110,12 @@ body.pane-open .page-pane-toggle {
 body.pane-open #container {
   margin-left: 188px;
 }
+/* The outline panel (right side) reserves its width the same way the
+   thumbnail pane does, so the page re-fits between the two panels instead
+   of sliding underneath them. */
+body.docx-outline-open #container {
+  margin-right: 240px;
+}
 
 /* ---- word outline panel ---- */
 .docx-outline {
@@ -175,8 +181,8 @@ body.pane-open #container {
   line-height: 1;
   cursor: pointer;
 }
-body.pane-open .docx-outline-toggle {
-  right: 198px;
+body.docx-outline-open .docx-outline-toggle {
+  right: 250px;
 }
 
 /* ---- word in-document search bar ---- */
@@ -221,6 +227,10 @@ body.pane-open .docx-outline-toggle {
 }
 .docx-searchbar-btn:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+}
+/* Keep the search bar clear of the outline panel when it is open. */
+body.docx-outline-open .docx-searchbar {
+  right: 250px;
 }
 /* match highlighting: CSS Custom Highlight API (preferred) … */
 ::highlight(docx-search) {

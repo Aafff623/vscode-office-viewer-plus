@@ -3,6 +3,7 @@
 
 ## 1.2.0 (2026-09-16)
 ### Added
+- Word: automatic pagination — chapters without explicit page breaks are split into real page-sized pages (matching the page box, repeating page headers/footers), instead of one continuous white sheet
 - Word: outline navigation panel — heading levels come from the document's real styles (works for any language), click a heading to jump, the current section stays highlighted while scrolling, open/closed is remembered
 - Word: in-document search — `Ctrl+F` opens a search bar with a match counter and `Enter` / `Shift+Enter` navigation; matches are highlighted without touching the document DOM
 - Word: comments and tracked changes are now shown (highlighted ranges with hover popovers)
@@ -16,6 +17,7 @@
 - Page thumbnails render at the display's pixel density (up to 2x) — sharp on HiDPI screens instead of blurry upscales
 
 ### Fixed
+- Word: the outline panel and thumbnail pane now reserve layout space, so the page is re-fitted between them instead of sliding underneath; resizing the editor re-fits (or restores to 100%) the same way, and a zoom you set yourself is never overridden
 - Word: a thumbnail page that fails to rasterize is retried instead of staying a placeholder forever; thumbnail captures no longer clone the whole document per page
 
 ## 1.1.0 (2026-09-16)

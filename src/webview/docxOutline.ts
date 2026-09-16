@@ -119,6 +119,14 @@ export function setupDocxOutline(container: HTMLElement, host?: PaneHost): Outli
   function apply(open: boolean): void {
     panel.classList.toggle('open', open);
     panel.style.display = open ? '' : 'none';
+    // Reserve layout space so the document re-fits into the remaining area
+    // instead of sliding underneath the panel (mirrors the thumbnail pane).
+    document.body.classList.toggle('docx-outline-open', open);
+    window.dispatchEvent(
+      new CustomEvent('docx-outline-toggled', {
+        detail: { open, newWidth: container.clientWidth },
+      })
+    );
     try {
       host?.setState?.({ outlineOpen: open });
     } catch {
@@ -138,6 +146,7 @@ export function setupDocxOutline(container: HTMLElement, host?: PaneHost): Outli
       }
       panel.remove();
       toggle.remove();
+      document.body.classList.remove('docx-outline-open');
     },
   };
 }

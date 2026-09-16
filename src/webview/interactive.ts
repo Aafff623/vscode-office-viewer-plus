@@ -28,27 +28,22 @@ export function computeWheelZoom(curZoom: number, deltaY: number): number {
 }
 
 /**
- * Zoom adjustment when the thumbnail pane opens: at the default 100% zoom,
- * shrink the document so it keeps fitting the narrower preview area. Returns
- * null when no adjustment should happen (custom zoom active, or the document
- * already fits).
+ * Panel-fit zoom, computed from metrics read at 100% zoom. Under CSS zoom
+ * both `clientWidth` and `scrollWidth` are unreliable (scrollWidth gets
+ * clamped to clientWidth when content fits, and both are reported in the
+ * element's own zoomed coordinate space), so the caller resets to 100%,
+ * measures once and calls this — stateless, therefore convergent: the same
+ * viewport always yields the same zoom, with no drift across repeated
+ * toggles/resizes. Returns 1.0 when the content already fits (or is within
+ * rounding distance of it).
  */
-export function computeFitNudge(
-  curZoom: number,
-  savedZoom: number | null,
-  docWidth: number,
-  availWidth: number
-): number | null {
-  if (savedZoom !== null) {
-    return null;
+export function computeOverlayZoom(clientWidth: number, scrollWidth: number): number {
+  if (!(clientWidth > 0) || !(scrollWidth > clientWidth + 2)) {
+    return 1.0;
   }
-  if (Math.abs(curZoom - 1) > 1e-9) {
-    return null;
-  }
-  if (docWidth <= availWidth) {
-    return null;
-  }
-  return Math.max(MIN_ZOOM, Math.min(1, availWidth / docWidth));
+  // 1% margin so rounding (and the document wrapper's own margins) cannot
+  // leave a pixel column tucked under a panel.
+  return Math.max(MIN_ZOOM, Math.min(1, (clientWidth / scrollWidth) * 0.99));
 }
 
 export interface InteractiveOptions {
@@ -83,7 +78,7 @@ export function setupOfficeInteractive(
   let dragButton = -1;
   let curZoom = 1.0;
   let savedZoom: number | null = null;
-  let paneNudged = false;
+  let fittedZoom: number | null = null;
   let tipTimer: ReturnType<typeof setTimeout> | null = null;
   let tipElement: HTMLDivElement | null = null;
 
@@ -235,7 +230,7 @@ export function setupOfficeInteractive(
         if (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0') {
           e.preventDefault();
           savedZoom = null;
-          paneNudged = false;
+          fittedZoom = null;
           setZoom(1.0);
           showTip('Reset: 100%');
         }
@@ -379,7 +374,7 @@ export function setupOfficeInteractive(
       ) {
         return;
       }
-      paneNudged = false;
+      fittedZoom = null;
       const result = computeDblClickZoom(curZoom, savedZoom);
       savedZoom = result.saved;
       setZoom(result.zoom);
@@ -387,26 +382,49 @@ export function setupOfficeInteractive(
     });
   }
 
-  // Thumbnail pane open/close: re-fit the document to the resized area.
-  window.addEventListener('page-pane-toggled', (event) => {
-    const detail = (event as CustomEvent<{ open: boolean; newWidth: number }>).detail;
+  // Side panels open/close (thumbnail pane on the left, outline panel on the
+  // right) and window resizes change the available width: keep the document
+  // fitted to the remaining area so the page is never occluded. Measurements
+  // are taken at 100% (see computeOverlayZoom) — the reset and the re-applied
+  // zoom happen within one synchronous block, so no intermediate state is
+  // painted. A zoom the user set (wheel, Ctrl+0, double-click) is untouched.
+  const refitForOverlays = (): void => {
     const c = getContainer();
-    if (!detail || !c) {
+    if (!c) {
       return;
     }
-    if (detail.open) {
-      const nudge = computeFitNudge(curZoom, savedZoom, c.scrollWidth, detail.newWidth);
-      if (nudge !== null) {
-        paneNudged = true;
-        setZoom(nudge);
-        showTip(`Zoom: ${Math.round(nudge * 100)}%`);
-      }
-    } else if (paneNudged) {
-      paneNudged = false;
-      setZoom(1.0);
+    if (savedZoom !== null) {
+      return;
+    }
+    if (Math.abs(curZoom - 1) > 1e-9 && curZoom !== fittedZoom) {
+      return;
+    }
+    const wasFitted = fittedZoom !== null;
+    setZoom(1.0);
+    const next = computeOverlayZoom(c.clientWidth, c.scrollWidth);
+    fittedZoom = next < 1 ? next : null;
+    if (fittedZoom !== null) {
+      setZoom(fittedZoom);
+      showTip(`Zoom: ${Math.round(fittedZoom * 100)}%`);
+    } else if (wasFitted) {
       showTip('Zoom: 100%');
     }
-  });
+  };
+  // A toggle can be dispatched while the document is mid-layout (e.g. the
+  // TOC tab-stop pass landing later), so re-check once things settle.
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  const onOverlayToggled = (): void => {
+    refitForOverlays();
+    if (settleTimer) {
+      clearTimeout(settleTimer);
+    }
+    settleTimer = setTimeout(refitForOverlays, 1400);
+  };
+  window.addEventListener('page-pane-toggled', onOverlayToggled);
+  window.addEventListener('docx-outline-toggled', onOverlayToggled);
+  // The editor splitting or resizing changes the available width the same
+  // way a panel toggle does — refit (or restore) on resize as well.
+  window.addEventListener('resize', refitForOverlays);
 
   // Ctrl / Cmd + Mouse Wheel smooth zoom
   window.addEventListener(
@@ -418,7 +436,7 @@ export function setupOfficeInteractive(
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         savedZoom = null;
-        paneNudged = false;
+        fittedZoom = null;
         setZoom(computeWheelZoom(curZoom, e.deltaY));
         showTip(`Zoom: ${Math.round(curZoom * 100)}%`);
       }
