@@ -1,6 +1,7 @@
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
@@ -30,6 +31,33 @@ for (const candidate of workerCandidates) {
 }
 if (!workerCopied) {
   console.warn('WARNING: pdf.js worker not found — PDF preview may fail.');
+}
+
+// Copy the pdf.js WASM decoders (JBIG2/JPX scanned-image decoding, QCMS color
+// management) so the webview can fetch them from local resources.
+const wasmDir = 'media/pdfjs-wasm';
+mkdirSync(wasmDir, { recursive: true });
+for (const wasmFile of ['jbig2.wasm', 'openjpeg.wasm', 'qcms_bg.wasm']) {
+  try {
+    copyFileSync(require.resolve(`pdfjs-dist/wasm/${wasmFile}`), `${wasmDir}/${wasmFile}`);
+  } catch {
+    console.warn(`WARNING: pdf.js wasm decoder not found: ${wasmFile}`);
+  }
+}
+
+// Copy CMaps and standard font data: pdf.js fetches these on demand for
+// CJK-encoded fonts and for PDFs that rely on non-embedded standard fonts.
+const pdfjsRoot = dirname(dirname(require.resolve('pdfjs-dist/build/pdf.mjs')));
+for (const [from, to] of [
+  ['cmaps', 'media/pdfjs-cmaps'],
+  ['standard_fonts', 'media/pdfjs-fonts'],
+]) {
+  try {
+    rmSync(to, { recursive: true, force: true });
+    cpSync(join(pdfjsRoot, from), to, { recursive: true });
+  } catch (error) {
+    console.warn(`WARNING: pdf.js assets not copied: ${from} (${error.message})`);
+  }
 }
 
 const common = {

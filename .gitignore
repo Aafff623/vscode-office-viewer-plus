@@ -8,3 +8,6 @@ media/pdf.worker.min.mjs
 .kiro/
 temp/
 .codegraph/
+media/pdfjs-wasm/
+media/pdfjs-cmaps/
+media/pdfjs-fonts/

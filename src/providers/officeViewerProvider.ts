@@ -120,13 +120,26 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
     const workerUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdf.worker.min.mjs')
     );
+    // pdf.js 6 loads its image decoders from here; the URL is concatenated
+    // with the filename, so it must end with a slash.
+    const wasmUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdfjs-wasm')
+    );
+    const cmapUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdfjs-cmaps')
+    );
+    const standardFontUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdfjs-fonts')
+    );
 
     const csp = [
       `default-src 'none'`,
       `img-src ${webview.cspSource} blob: data: https:`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource} data:`,
-      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
+      // 'wasm-unsafe-eval' lets pdf.js compile its JBIG2/JPX/QCMS decoders
+      // (WebAssembly) without enabling general eval.
+      `script-src 'nonce-${nonce}' ${webview.cspSource} 'wasm-unsafe-eval'`,
       `worker-src ${webview.cspSource} blob:`,
       `connect-src ${webview.cspSource} blob: data:`,
       // HTML preview uses a sandboxed blob: iframe.
@@ -145,6 +158,9 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
   <div id="status" class="status">Loading preview…</div>
   <div id="container" class="container"></div>
   <script nonce="${nonce}">window.__PDF_WORKER_SRC__ = ${JSON.stringify(workerUri.toString())};</script>
+  <script nonce="${nonce}">window.__PDF_WASM_URL__ = ${JSON.stringify(wasmUri.toString() + '/')};</script>
+  <script nonce="${nonce}">window.__PDF_CMAP_URL__ = ${JSON.stringify(cmapUri.toString() + '/')};</script>
+  <script nonce="${nonce}">window.__PDF_STDFONT_URL__ = ${JSON.stringify(standardFontUri.toString() + '/')};</script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
