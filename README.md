@@ -7,20 +7,22 @@ Modern, high-performance read-only preview for Office documents, PDFs, diagrams,
 - 🖐 **Hand Tool Pan**: Hold `Space` + Left-click drag, or use the **Middle Mouse Button** to pan around large sheets, zoomed PDFs, and diagrams smoothly.
 - 🔍 **Smooth Canvas Zoom**: `Ctrl` / `Cmd` + Mouse Wheel to zoom freely between 30% and 350%, complete with a frosted-glass HUD badge.
 - 🖱 **Double-Click Zoom**: Double-click anywhere in a Word, Excel, PowerPoint, or PDF preview to jump to 150%; double-click again to restore the previous zoom.
-- 🗺 **Page Thumbnails Pane**: A Word-style navigation pane for PDF and Word previews — one small card per page stacked in a left sidebar, showing the real page content scaled down (PDF pages from their rendered canvases, Word pages rasterized from the live layout). Click a card to jump, the current page stays highlighted while you scroll, and the pane collapses to give the preview full width (open/closed is remembered).
+- 🗺 **Page Thumbnails Pane**: A Word-style navigation pane for PDF and Word previews — one small card per page stacked in a left sidebar, showing the real page content scaled down. Click a card to jump, the current page stays highlighted while you scroll, and the pane collapses to give the preview full width (open/closed is remembered).
+- 📑 **Word Outline & Search**: A collapsible outline panel built from the document's real heading styles (any language), and an in-document search bar (`Ctrl+F`) with match count and `Enter` / `Shift+Enter` navigation. Comments and tracked changes are displayed too.
+- 📊 **Excel Sorting & Frozen Header**: Click a column header to sort (numeric-aware, ascending/descending); the header row stays visible while you scroll large sheets. Legacy `.xls` workbooks open in the same preview.
 - ⚡ **Quick Reset**: Press `Ctrl + 0` anytime to instantly restore 100% zoom.
-- 📐 **Responsive PDF Viewport**: Automatically calculates optimal `fitScale` based on your editor split width and device pixel ratio.
+- 📐 **Responsive PDF Viewport**: Automatically calculates optimal `fitScale` based on your editor split width and device pixel ratio, and renders scanned documents (JBIG2/JPX images) and CJK text correctly.
 - 🌐 **Clean Localization**: Modern English & bilingual-ready interface with zero hardcoded language quirks.
 
 ## Supported Formats
 
 | Format | Extensions | Renderer |
 |--------|-----------|----------|
-| Word | `.docx` | [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) — text, headings, tables, lists, styles |
-| Excel | `.xlsx`, `.xlsm` | [SheetJS](https://sheetjs.com/) — all sheets with tab switcher |
+| Word | `.docx` | [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) — text, headings, tables, lists, styles; outline panel, search, comments |
+| Excel | `.xlsx`, `.xlsm`, `.xls` | [SheetJS](https://sheetjs.com/) — all sheets with tab switcher, sortable columns, frozen header (`.xls` = Excel 97-2003) |
 | CSV / TSV | `.csv`, `.tsv` | Lightweight table preview with UTF-8 and Shift_JIS decoding |
-| PDF | `.pdf` | [pdf.js](https://mozilla.github.io/pdf.js/) — responsive fit, high-resolution canvas |
-| PowerPoint | `.pptx` | [pptx-preview](https://github.com/meshesha/pptx-preview) — slides in list view |
+| PDF | `.pdf` | [pdf.js](https://mozilla.github.io/pdf.js/) 6.2 — responsive fit, high-resolution canvas, WASM image decoders, CJK CMap support |
+| PowerPoint | `.pptx` | [pptx-preview](https://github.com/meshesha/pptx-preview) — slides in list view; EMF/WMF images are rasterized on the fly |
 | Marp Slides | `.marp.md` | [Marp Core](https://github.com/marp-team/marp-core) — Slide presentation with navigation |
 | Mermaid | `.mmd`, `.mermaid` | [Mermaid](https://mermaid.js.org/) — flowcharts, sequence diagrams, Gantt, etc. |
 | HTML | `.html`, `.htm` | Static sandboxed iframe preview (the webview CSP disables page scripts) |
@@ -74,5 +76,6 @@ graph TD
 - pptx rendering faithfulness depends on slide complexity (animations and SmartArt may not render correctly)
 - Large PDFs (200+ pages) render all pages at once; initial load may take a moment
 - PDF pages are rendered to canvas at the initial fit resolution; zooming in beyond that gets blurry because the canvas is not re-rendered at the higher zoom
+- Legacy `.xls` support targets the common BIFF8 format (Excel 97-2003); very old BIFF5 files open but non-Latin text may not decode correctly
 - HTML preview is static: the page's own JavaScript does not run (disabled by the content security policy and the iframe sandbox)
 - Marp slides: custom themes (CSS files) are not yet supported; only built-in themes (default, gaia, uncover)
