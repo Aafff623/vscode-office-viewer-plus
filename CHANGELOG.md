@@ -19,6 +19,7 @@
 - Page thumbnails render at the display's pixel density (up to 2x) — sharp on HiDPI screens instead of blurry upscales
 
 ### Fixed
+- PowerPoint: decks now lay out like the PDF preview — slides flow continuously down the page and the whole preview scrolls, instead of being trapped in a small internal scroll window that showed part of one slide with dead space below; slides fit the available width (with side margins) instead of overflowing behind a horizontal scrollbar, and 4:3 decks get the correct slide shape
 - Reinstalling or upgrading the extension no longer risks webviews running the previous build's scripts: bundled scripts/styles now carry a per-build content hash in their URL, so the editor's resource cache can never serve a stale bundle (this is what made double-click zoom misbehave after the 1.2.0 reinstall)
 - Word: the outline panel and thumbnail pane now reserve layout space, so the page is re-fitted between them instead of sliding underneath; resizing the editor re-fits (or restores to 100%) the same way, and a zoom you set yourself is never overridden
 - Word: a thumbnail page that fails to rasterize is retried instead of staying a placeholder forever; thumbnail captures no longer clone the whole document per page

@@ -58,6 +58,10 @@ export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Pro
   await replaceMetafileImages(container);
 
   const wrapper = container.querySelector<HTMLElement>('.pptx-preview-wrapper');
+  // CSSStyleDeclaration.zoom only exists in the DOM typings from TS 5.6 on;
+  // the cast keeps typecheck green on the locked ^5.4 range (same as
+  // interactive.ts setZoom).
+  const styleZoom = (el: HTMLElement): { zoom?: string } => el.style as unknown as { zoom?: string };
   if (wrapper) {
     // The library puts the deck in a fixed-height internal scroll window
     // (its own scrollbars, one slide half-visible at a time, the rest of the
@@ -67,18 +71,18 @@ export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Pro
     wrapper.style.height = 'auto';
     wrapper.style.overflow = 'visible';
     const avail = Math.max(200, (container.clientWidth || RENDER_WIDTH) - MARGIN);
-    wrapper.style.zoom = String(avail / RENDER_WIDTH);
+    styleZoom(wrapper).zoom = String(avail / RENDER_WIDTH);
   }
   // Geometry beacon (see interactive.ts dblclick beacon): viewport, applied
   // scale and slide-box facts, to diagnose on-machine layout reports.
-  const firstSlide = container.querySelector<HTMLElement>('.pptx-preview-slide-wrapper');
-  const slideRect = firstSlide?.getBoundingClientRect();
+  const slides = container.querySelectorAll<HTMLElement>('.pptx-preview-slide-wrapper');
+  const slideRect = slides[0]?.getBoundingClientRect();
   console.log('[ovp:pptx]', {
     build: window.__OVP_BUILD__?.bundle ?? '?',
     viewport: [window.innerWidth, window.innerHeight],
     containerClient: [container.clientWidth, container.clientHeight],
-    zoom: wrapper ? Math.round((parseFloat(wrapper.style.zoom) || 1) * 1000) / 1000 : null,
-    slides: container.querySelectorAll('.pptx-preview-slide-wrapper').length,
+    zoom: wrapper ? Math.round((parseFloat(styleZoom(wrapper).zoom || '1')) * 1000) / 1000 : null,
+    slides: slides.length,
     firstSlideRect: slideRect
       ? [slideRect.left, slideRect.top, slideRect.width, slideRect.height].map((v) =>
           Math.round(v)

@@ -12,7 +12,7 @@ const result = await esbuild.build({
   write: false,
 });
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`;
-const { computeDblClickZoom, computeWheelZoom, computeZoomAnchorPan, DBLCLICK_ZOOM, MIN_ZOOM, MAX_ZOOM } =
+const { computeDblClickZoom, computeWheelZoom, computeZoomAnchorPan, computeOverlayZoom, DBLCLICK_ZOOM, MIN_ZOOM, MAX_ZOOM } =
   await import(moduleUrl);
 
 test('interactive module bundles and keeps its DOM hooks', async () => {
@@ -104,4 +104,20 @@ test('zoom anchor pan keeps the layout point under the cursor invariant', () => 
   assert.ok(
     Math.abs((clientX - rectLeft) / oldZoom - (clientX - rectLeftAfter) / newZoom) < 1e-9
   );
+});
+
+test('overlay fit returns 1.0 when the content already fits or within tolerance', () => {
+  assert.equal(computeOverlayZoom(1000, 1000), 1.0);
+  assert.equal(computeOverlayZoom(1000, 1002), 1.0); // +2px rounding tolerance
+  assert.equal(computeOverlayZoom(0, 5000), 1.0); // degenerate measurement
+});
+
+test('overlay fit scales down by the overflow ratio with a 1% margin', () => {
+  const zoom = computeOverlayZoom(980, 1000);
+  assert.ok(Math.abs(zoom - (980 / 1000) * 0.99) < 1e-9);
+  assert.ok(zoom < 1 && zoom > MIN_ZOOM);
+});
+
+test('overlay fit clamps extreme overflow at MIN_ZOOM', () => {
+  assert.equal(computeOverlayZoom(400, 100000), MIN_ZOOM);
 });

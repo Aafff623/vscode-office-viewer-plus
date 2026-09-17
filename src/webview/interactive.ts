@@ -446,11 +446,22 @@ export function setupOfficeInteractive(
         const rectStr = (r: DOMRect | undefined): number[] | null =>
           r ? [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10) : null;
         const scrollBefore = snapScrollState(scrollChain);
+        // The zoom above is container-relative; a nested wrapper may carry
+        // its own CSS zoom (e.g. the pptx deck fit), so also report the
+        // effective on-screen scale = container zoom × first-child zoom.
+        const cont = getContainer();
+        const styleZoomOf = (el: Element | null | undefined): number => {
+          if (!el) return 1;
+          const z = parseFloat((getComputedStyle(el) as unknown as { zoom?: string }).zoom ?? '1');
+          return Number.isFinite(z) && z > 0 ? z : 1;
+        };
+        const effectiveZoom = styleZoomOf(cont) * styleZoomOf(cont?.firstElementChild);
         applyPan(dx, dy);
         console.log('[ovp:dblclick]', {
           build: window.__OVP_BUILD__?.bundle ?? '?',
           pointer: [e.clientX, e.clientY],
           zoom: [Math.round(prevZoom * 1000) / 1000, Math.round(result.zoom * 1000) / 1000],
+          effectiveZoom: Math.round(effectiveZoom * 1000) / 1000,
           rectBefore: rectStr(rectBefore),
           rectAfter: rectStr(rectAfter),
           pan: [Math.round(dx * 10) / 10, Math.round(dy * 10) / 10],

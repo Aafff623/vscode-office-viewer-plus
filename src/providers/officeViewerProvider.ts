@@ -120,29 +120,45 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
     try {
       const file = vscode.Uri.joinPath(this.context.extensionUri, ...parts);
       return createHash('sha256').update(readFileSync(file.fsPath)).digest('hex').slice(0, 10);
-    } catch {
+    } catch (err) {
+      // '0' keeps the webview usable but disables cache-busting for this
+      // asset — the exact stale-bundle bug this hash exists to prevent, so
+      // leave a trace in the ext host output instead of failing silently.
+      console.error(`[office-viewer-plus] assetVersion failed for ${parts.join('/')}:`, err);
       return '0';
     }
+  }
+
+  /**
+   * Webview URI of a bundled asset, versioned with its content hash (see
+   * assetVersion). The hash is returned alongside the URI because the build
+   * beacon needs it without re-reading and re-hashing the file.
+   */
+  private versionedAsset(
+    webview: vscode.Webview,
+    ...parts: string[]
+  ): { uri: vscode.Uri; hash: string } {
+    const hash = this.assetVersion(...parts);
+    return {
+      uri: webview
+        .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, ...parts))
+        .with({ query: hash }),
+      hash,
+    };
   }
 
   private getHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
     const scriptName = `webview-${this.kind}.js`;
-    const scriptHash = this.assetVersion('dist', scriptName);
-    const styleHash = this.assetVersion('media', 'viewer.css');
-    const scriptUri = webview
-      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', scriptName))
-      .with({ query: scriptHash });
-    const styleUri = webview
-      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer.css'))
-      .with({ query: styleHash });
+    const script = this.versionedAsset(webview, 'dist', scriptName);
+    const style = this.versionedAsset(webview, 'media', 'viewer.css');
+    const scriptUri = script.uri;
+    const styleUri = style.uri;
     // Build beacon for on-machine debugging: htmlAt proves this HTML was
     // regenerated (a stale cached page keeps an old stamp), and bundle/css
     // let the console output be matched against the entry script's ?v= hash.
-    const buildStamp = { htmlAt: new Date().toISOString(), bundle: scriptHash, css: styleHash };
-    const workerUri = webview
-      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdf.worker.min.mjs'))
-      .with({ query: this.assetVersion('media', 'pdf.worker.min.mjs') });
+    const buildStamp = { htmlAt: new Date().toISOString(), bundle: script.hash, css: style.hash };
+    const workerUri = this.versionedAsset(webview, 'media', 'pdf.worker.min.mjs').uri;
     // pdf.js 6 loads its image decoders from here; the URL is concatenated
     // with the filename, so it must end with a slash.
     const wasmUri = webview.asWebviewUri(
