@@ -22,6 +22,13 @@ export const WHEEL_ZOOM_OUT_FACTOR = 0.925;
 export const MIN_ZOOM = 0.3;
 export const MAX_ZOOM = 3.5;
 
+declare global {
+  interface Window {
+    /** Build beacon injected by the provider's HTML (see officeViewerProvider.getHtml). */
+    __OVP_BUILD__?: { htmlAt: string; bundle: string; css: string };
+  }
+}
+
 /** Ctrl+wheel zoom step: one wheel tick in either direction, clamped. */
 export function computeWheelZoom(curZoom: number, deltaY: number): number {
   const factor = deltaY < 0 ? WHEEL_ZOOM_IN_FACTOR : WHEEL_ZOOM_OUT_FACTOR;
@@ -233,6 +240,18 @@ export function setupOfficeInteractive(
     }
   }
 
+  // Diagnostic snapshot of the scroll chain (innermost first) plus the
+  // window, for the dblclick anchor beacon — rounded for readable console.
+  function snapScrollState(chain: Element[]): string {
+    const parts = [`win:${Math.round(window.scrollX)},${Math.round(window.scrollY)}`];
+    for (const el of chain) {
+      const cls =
+        typeof el.className === 'string' && el.className ? `.${el.className.trim().split(/\s+/)[0]}` : '';
+      parts.push(`${el.tagName.toLowerCase()}${cls}:${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
+    }
+    return parts.join(' | ');
+  }
+
   window.addEventListener(
     'keydown',
     (e: KeyboardEvent) => {
@@ -421,7 +440,23 @@ export function setupOfficeInteractive(
           result.zoom
         );
         scrollChain = collectScrollChain(target);
+        // Anchor beacon: every input to the compensation plus the scroll
+        // state before/after, so one pasted console line decides between
+        // stale build / handler-not-run / wrong pan / pan-overwritten.
+        const rectStr = (r: DOMRect | undefined): number[] | null =>
+          r ? [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10) : null;
+        const scrollBefore = snapScrollState(scrollChain);
         applyPan(dx, dy);
+        console.log('[ovp:dblclick]', {
+          build: window.__OVP_BUILD__?.bundle ?? '?',
+          pointer: [e.clientX, e.clientY],
+          zoom: [Math.round(prevZoom * 1000) / 1000, Math.round(result.zoom * 1000) / 1000],
+          rectBefore: rectStr(rectBefore),
+          rectAfter: rectStr(rectAfter),
+          pan: [Math.round(dx * 10) / 10, Math.round(dy * 10) / 10],
+          scrollBefore,
+          scrollAfter: snapScrollState(scrollChain),
+        });
         scrollChain = [];
       }
       showTip(`Zoom: ${Math.round(result.zoom * 100)}%`);
@@ -481,6 +516,15 @@ export function setupOfficeInteractive(
       }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        // A pinch on a precision touchpad arrives as ctrl+wheel; clearing
+        // savedZoom here silently breaks the next dblclick's restore, so the
+        // clobber is logged to make interference visible in the field.
+        if (savedZoom !== null) {
+          console.log('[ovp:wheel] cleared savedZoom', {
+            saved: Math.round(savedZoom * 1000) / 1000,
+            deltaY: e.deltaY,
+          });
+        }
         savedZoom = null;
         fittedZoom = null;
         setZoom(computeWheelZoom(curZoom, e.deltaY));

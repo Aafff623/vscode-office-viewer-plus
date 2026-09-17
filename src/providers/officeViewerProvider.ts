@@ -128,12 +128,18 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
   private getHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
     const scriptName = `webview-${this.kind}.js`;
+    const scriptHash = this.assetVersion('dist', scriptName);
+    const styleHash = this.assetVersion('media', 'viewer.css');
     const scriptUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', scriptName))
-      .with({ query: this.assetVersion('dist', scriptName) });
+      .with({ query: scriptHash });
     const styleUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer.css'))
-      .with({ query: this.assetVersion('media', 'viewer.css') });
+      .with({ query: styleHash });
+    // Build beacon for on-machine debugging: htmlAt proves this HTML was
+    // regenerated (a stale cached page keeps an old stamp), and bundle/css
+    // let the console output be matched against the entry script's ?v= hash.
+    const buildStamp = { htmlAt: new Date().toISOString(), bundle: scriptHash, css: styleHash };
     const workerUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pdf.worker.min.mjs'))
       .with({ query: this.assetVersion('media', 'pdf.worker.min.mjs') });
@@ -174,6 +180,7 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
 <body>
   <div id="status" class="status">Loading preview…</div>
   <div id="container" class="container"></div>
+  <script nonce="${nonce}">window.__OVP_BUILD__ = ${JSON.stringify(buildStamp)};</script>
   <script nonce="${nonce}">window.__PDF_WORKER_SRC__ = ${JSON.stringify(workerUri.toString())};</script>
   <script nonce="${nonce}">window.__PDF_WASM_URL__ = ${JSON.stringify(wasmUri.toString() + '/')};</script>
   <script nonce="${nonce}">window.__PDF_CMAP_URL__ = ${JSON.stringify(cmapUri.toString() + '/')};</script>

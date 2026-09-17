@@ -53,6 +53,13 @@ function base64ToBytes(base64: string): Uint8Array {
  */
 export function mount(render: RenderFn, options: MountOptions = {}): void {
   const vscode = acquireVsCodeApi();
+  // Build beacon: the HTML stamp and the entry script URL (whose ?v= is the
+  // bundle content hash) together prove which build actually loaded — the
+  // first thing to check when on-machine behavior disagrees with the code.
+  const entrySrc =
+    document.querySelector('script[src*="webview-"]')?.getAttribute('src') ?? '(not found)';
+  console.log('[office-viewer-plus] build beacon', { htmlStamp: window.__OVP_BUILD__, entry: entrySrc });
+
   const statusEl = document.getElementById('status') as HTMLElement;
   const containerEl = document.getElementById('container') as HTMLElement;
 
