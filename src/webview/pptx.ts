@@ -59,6 +59,13 @@ export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Pro
 
   const wrapper = container.querySelector<HTMLElement>('.pptx-preview-wrapper');
   if (wrapper) {
+    // The library puts the deck in a fixed-height internal scroll window
+    // (its own scrollbars, one slide half-visible at a time, the rest of the
+    // viewport dead) — the opposite of the PDF preview's continuous document
+    // flow. Let the wrapper grow to its full content height and hand
+    // scrolling back to the document, then scale to the container width.
+    wrapper.style.height = 'auto';
+    wrapper.style.overflow = 'visible';
     const avail = Math.max(200, (container.clientWidth || RENDER_WIDTH) - MARGIN);
     wrapper.style.zoom = String(avail / RENDER_WIDTH);
   }
@@ -76,6 +83,9 @@ export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Pro
       ? [slideRect.left, slideRect.top, slideRect.width, slideRect.height].map((v) =>
           Math.round(v)
         )
+      : null,
+    wrapperBox: wrapper
+      ? [wrapper.clientWidth, wrapper.clientHeight, wrapper.scrollWidth, wrapper.scrollHeight]
       : null,
     docOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   });
