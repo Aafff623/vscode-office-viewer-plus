@@ -35,12 +35,19 @@ async function replaceMetafileImages(container: HTMLElement): Promise<void> {
 }
 
 export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Promise<void> {
-  const width = container.clientWidth || 960;
-  const height = Math.round((width * 9) / 16);
+  // Decks render on a fixed 960px logical canvas; the library derives each
+  // slide's height from the file's own aspect ratio (4:3 and 16:9 both come
+  // out correct), so the init height is only the 16:9 default. The rendered
+  // wrapper is then scaled to the container with CSS zoom: a fixed canvas
+  // avoids measuring the container before the vertical scrollbar exists
+  // (which used to leave the deck ~17px wider than the viewport), and the
+  // 48px margin keeps slides off the pane edges.
+  const RENDER_WIDTH = 960;
+  const MARGIN = 48;
 
   const previewer = init(container, {
-    width,
-    height,
+    width: RENDER_WIDTH,
+    height: Math.round((RENDER_WIDTH * 9) / 16),
     mode: 'list',
   });
 
@@ -49,4 +56,27 @@ export async function renderPptx(bytes: Uint8Array, container: HTMLElement): Pro
   new Uint8Array(arrayBuffer).set(bytes);
   await previewer.preview(arrayBuffer);
   await replaceMetafileImages(container);
+
+  const wrapper = container.querySelector<HTMLElement>('.pptx-preview-wrapper');
+  if (wrapper) {
+    const avail = Math.max(200, (container.clientWidth || RENDER_WIDTH) - MARGIN);
+    wrapper.style.zoom = String(avail / RENDER_WIDTH);
+  }
+  // Geometry beacon (see interactive.ts dblclick beacon): viewport, applied
+  // scale and slide-box facts, to diagnose on-machine layout reports.
+  const firstSlide = container.querySelector<HTMLElement>('.pptx-preview-slide-wrapper');
+  const slideRect = firstSlide?.getBoundingClientRect();
+  console.log('[ovp:pptx]', {
+    build: window.__OVP_BUILD__?.bundle ?? '?',
+    viewport: [window.innerWidth, window.innerHeight],
+    containerClient: [container.clientWidth, container.clientHeight],
+    zoom: wrapper ? Math.round((parseFloat(wrapper.style.zoom) || 1) * 1000) / 1000 : null,
+    slides: container.querySelectorAll('.pptx-preview-slide-wrapper').length,
+    firstSlideRect: slideRect
+      ? [slideRect.left, slideRect.top, slideRect.width, slideRect.height].map((v) =>
+          Math.round(v)
+        )
+      : null,
+    docOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  });
 }
