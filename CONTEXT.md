@@ -34,14 +34,34 @@ when reality changes; do not add unverified claims.
 - `interactive.ts` adds the gesture layer (Space/middle pan, Ctrl+wheel
   30–350% via CSS `zoom` on `#container`, Ctrl+0, double-click 150%
   anchored at the cursor). Marp manages its own zoom/keyboard and is exempt.
-- Double-click zoom anchoring: CSS `zoom` scales content out of the
-  container's top-left, so after a zoom change the cursor-to-origin gap
-  must be scrolled back: read `#container`'s `getBoundingClientRect()`
-  BEFORE `setZoom`, then scroll by `(clientX - rect.left) * (new/old - 1)`
-  (`computeZoomAnchorPan`, distributed over the scroll chain). When the
-  content has no overflow in an axis the scroll clamps and the pointer
-  drifts there — same as native browser zoom, not a bug. Ctrl+wheel stays
-  top-left anchored by design.
+- Zoom anchoring (`anchorZoom`) is shared by double-click (at the pointer)
+  and Ctrl+wheel (at the middle of the pane): `computeZoomAnchorPan` scales
+  the cursor-to-origin gap by `new/old - 1` and `planPan` distributes it over
+  the scroll chain, converting viewport px into each scroller's own units
+  (`scaleOf` = product of the CSS zooms on it and its ancestors — a scroller
+  inside a zoomed subtree reports its offsets and ranges in local px). A probe
+  (`probeAnchor`: a caret, or a fractional point in a box when there is no
+  text) then measures the real result and corrects what is left; the residual
+  it reports is the beacon's own verdict.
+- Content offset (`shiftLocalX/Y`, applied as a margin on `#container`): a
+  scroll can only move what has scroll range, but a page that fits the pane
+  re-centers as the zoom changes (its margins are laid out against a container
+  that keeps the viewport's width), so a click near an edge would otherwise
+  drift toward the middle. A margin moves the content instead, and because a
+  block with auto width keeps its right edge at the body's edge it adds no
+  horizontal scroll range of its own (a transform or relative offset does:
+  measured +149px of document width, which then let the next scroll clamp the
+  window back and eat the offset). How far the content moves per local px of
+  margin depends on the content (half for a centered page, all of it for
+  flush-left content), so the response is measured before the exact margin is
+  applied. Reset by Ctrl+0 and by `refitForOverlays`.
+- The second double-click is a view restore, not an anchored zoom-out:
+  `ViewSnapshot` captures zoom, window/chain scroll offsets and the content
+  offset before the zoom-in, and `restoreViewSnapshot` puts them back —
+  content offset first (it is the layout change), then the scrolls, each
+  verified once by read-back because a layout pass landing in the same frame
+  can let the browser's scroll anchoring adjust a scroller right after the
+  write.
 - Thumbnails (`thumbs.ts` + `domRaster.ts`): left pane with one card per
   page. PDF cards downsample the already-rendered canvases; DOCX cards are
   rasterized from the live DOM by html2canvas-pro — lazily, serially, with

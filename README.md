@@ -5,8 +5,8 @@ Modern, high-performance read-only preview for Office documents, PDFs, diagrams,
 ## ✨ Plus Features
 
 - 🖐 **Hand Tool Pan**: Hold `Space` + Left-click drag, or use the **Middle Mouse Button** to pan around large sheets, zoomed PDFs, and diagrams smoothly.
-- 🔍 **Smooth Canvas Zoom**: `Ctrl` / `Cmd` + Mouse Wheel to zoom freely between 30% and 350%, complete with a frosted-glass HUD badge.
-- 🖱 **Double-Click Zoom**: Double-click anywhere in a Word, Excel, PowerPoint, or PDF preview to jump to 150%; double-click again to restore the previous zoom.
+- 🔍 **Smooth Canvas Zoom**: `Ctrl` / `Cmd` + Mouse Wheel to zoom freely between 30% and 350%, anchored at the middle of the pane — what you are looking at stays in place — complete with a frosted-glass HUD badge.
+- 🖱 **Double-Click Zoom**: Double-click anywhere in a Word, Excel, PowerPoint, or PDF preview to jump to 150% with the content under the pointer kept in place; double-click again to go back to the view you came from (same zoom, same position, wherever the pointer is by then).
 - 🗺 **Page Thumbnails Pane**: A Word-style navigation pane for PDF and Word previews — one small card per page stacked in a left sidebar, showing the real page content scaled down. Click a card to jump, the current page stays highlighted while you scroll, and the pane collapses to give the preview full width (open/closed is remembered).
 - 📑 **Word Outline & Search**: A collapsible outline panel built from the document's real heading styles (any language), and an in-document search bar (`Ctrl+F`) with match count and `Enter` / `Shift+Enter` navigation. Comments and tracked changes are displayed too.
 - 📊 **Excel Sorting & Frozen Header**: Click a column header to sort (numeric-aware, ascending/descending); the header row stays visible while you scroll large sheets. Legacy `.xls` workbooks open in the same preview.

@@ -20,3 +20,4 @@ HANDOFF.md
 PROJECT_ANALYSIS.md
 .codegraph/**
 .cursor/**
+.playwright-mcp/**
