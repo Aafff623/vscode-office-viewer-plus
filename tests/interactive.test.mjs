@@ -12,8 +12,17 @@ const result = await esbuild.build({
   write: false,
 });
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`;
-const { computeDblClickZoom, computeWheelZoom, computeZoomAnchorPan, computeOverlayZoom, DBLCLICK_ZOOM, MIN_ZOOM, MAX_ZOOM } =
-  await import(moduleUrl);
+const {
+  computeDblClickZoom,
+  computeWheelZoom,
+  computeZoomAnchorPan,
+  computeOverlayZoom,
+  planPan,
+  expectedProbeScreenPos,
+  DBLCLICK_ZOOM,
+  MIN_ZOOM,
+  MAX_ZOOM,
+} = await import(moduleUrl);
 
 test('interactive module bundles and keeps its DOM hooks', async () => {
   const code = Buffer.from(result.outputFiles[0].contents).toString('utf-8');
@@ -104,6 +113,66 @@ test('zoom anchor pan keeps the layout point under the cursor invariant', () => 
   assert.ok(
     Math.abs((clientX - rectLeft) / oldZoom - (clientX - rectLeftAfter) / newZoom) < 1e-9
   );
+});
+
+test('pan plan converts a visual delta into an inner scroller\'s local units', () => {
+  // The pane carries CSS zoom 1.5, so one unit of its scroll offset moves the
+  // content 1.5 visual px: a 120px visual pan must write 80 local units.
+  const plan = planPan(120, 60, [{ scale: 1.5, x: 10, y: 20, maxX: 500, maxY: 500 }]);
+  assert.equal(plan.targets.length, 1);
+  assert.equal(plan.targets[0].x, 90);
+  assert.equal(plan.targets[0].y, 60);
+  assert.equal(plan.window.x, 0);
+  assert.equal(plan.window.y, 0);
+});
+
+test('pan plan hands the residue to the window when an inner scroller clamps', () => {
+  const plan = planPan(120, 60, [{ scale: 1.5, x: 0, y: 0, maxX: 30, maxY: 10 }]);
+  assert.equal(plan.targets[0].x, 30);
+  assert.equal(plan.targets[0].y, 10);
+  // 120 - 30*1.5 = 75 visual px left for the window.
+  assert.equal(plan.window.x, 75);
+  assert.equal(plan.window.y, 45);
+});
+
+test('pan plan lets a scale-1 target absorb the whole delta and leaves the window at zero', () => {
+  const withTarget = planPan(-40, 25, [{ scale: 1, x: 100, y: 100, maxX: 500, maxY: 500 }]);
+  assert.equal(withTarget.targets[0].x, 60);
+  assert.equal(withTarget.targets[0].y, 125);
+  assert.equal(withTarget.window.x, 0);
+  assert.equal(withTarget.window.y, 0);
+
+  const noTargets = planPan(-40, 25, []);
+  assert.equal(noTargets.window.x, -40);
+  assert.equal(noTargets.window.y, 25);
+});
+
+test('pan plan walks an outer scroller with the residue and clamps per target', () => {
+  const plan = planPan(100, 0, [
+    { scale: 1, x: 0, y: 0, maxX: 40, maxY: 0 },
+    { scale: 2, x: 0, y: 0, maxX: 100, maxY: 0 },
+  ]);
+  assert.equal(plan.targets[0].x, 40); // clamped at its own range
+  assert.equal(plan.targets[1].x, 30); // (100-40)/2 local units
+  assert.equal(plan.window.x, 0);
+});
+
+test('pan plan clamps at zero and never scrolls a target backwards past it', () => {
+  const plan = planPan(-100, 0, [{ scale: 1, x: 10, y: 0, maxX: 500, maxY: 0 }]);
+  assert.equal(plan.targets[0].x, 0);
+  assert.equal(plan.window.x, -90);
+});
+
+test('probe expectation places a probed point by scaling it about the pointer', () => {
+  // A probe exactly under the pointer stays there...
+  const atPointer = expectedProbeScreenPos(300, 400, 300, 400, 1.5);
+  assert.equal(atPointer.x, 300);
+  assert.equal(atPointer.y, 400);
+
+  // ...and a probe 20px right / 10px down sits 1.5x that distance afterwards.
+  const offset = expectedProbeScreenPos(300, 400, 320, 410, 1.5);
+  assert.equal(offset.x, 330);
+  assert.equal(offset.y, 415);
 });
 
 test('overlay fit returns 1.0 when the content already fits or within tolerance', () => {

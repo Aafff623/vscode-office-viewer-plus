@@ -12,7 +12,7 @@
 - PowerPoint: EMF/WMF vector images embedded in slides are now rasterized and displayed instead of breaking
 
 ### Changed
-- Word/Excel/PowerPoint/PDF: double-click zoom is anchored at the cursor — the content under the pointer stays put when jumping to 150% and when restoring, instead of the view always zooming from the top-left (when the content has no room to scroll, the extra offset clamps, same as native browser zoom)
+- Word/Excel/PowerPoint/PDF: Ctrl/Cmd + wheel zoom now grows out of the middle of the pane — the content point you are looking at stays put instead of the view expanding from the top-left corner
 - Word/PDF: the outline and thumbnail toggles are redesigned as slim fold handles stuck to the screen edges (bright blue, half-rounded grips with a direction chevron); both panels always start folded — nothing pops open on its own, opening either one is the user's call
 - PDF engine upgraded to pdf.js 6.2.108 with on-demand assets: WASM decoders for scanned-document images (JBIG2/JPX), CJK CMap tables and standard font data — documents that previously showed missing text or images now render
 - Word rendering engine upgraded to docx-preview 0.3.7
@@ -21,6 +21,8 @@
 ### Fixed
 - PowerPoint: decks now lay out like the PDF preview — slides flow continuously down the page and the whole preview scrolls, instead of being trapped in a small internal scroll window that showed part of one slide with dead space below; slides fit the available width (with side margins) instead of overflowing behind a horizontal scrollbar, and 4:3 decks get the correct slide shape
 - Reinstalling or upgrading the extension no longer risks webviews running the previous build's scripts: bundled scripts/styles now carry a per-build content hash in their URL, so the editor's resource cache can never serve a stale bundle (this is what made double-click zoom misbehave after the 1.2.0 reinstall)
+- Double-click zoom lands where you clicked, on every format and pane width: the content under the pointer stays put when jumping to 150%, and the second double-click returns to the view you zoomed in from (same zoom, same region, wherever the pointer is now). Anchoring that a scroll cannot express — a page that fits the pane keeps re-centering as the zoom changes, so a click near an edge has no scroll range to work with — is now carried by a content offset instead, so clicking the left or right side of a page no longer drifts the view toward the middle
+- Excel: double-click zoom no longer lands a row off. A sheet scrolls inside the zoomed pane, where scroll offsets are in the pane's own units while the compensation was computed in screen pixels — the pan overshot by the zoom factor and the anchor missed by more than a hundred pixels. The compensation now converts into each scroller's units and then verifies itself against the real layout (the pointer's content point is measured before and after and corrected if it moved), which also fixes drag-panning inside a zoomed sheet staying 1:1 with the pointer
 - Word: the outline panel and thumbnail pane now reserve layout space, so the page is re-fitted between them instead of sliding underneath; resizing the editor re-fits (or restores to 100%) the same way, and a zoom you set yourself is never overridden
 - Word: a thumbnail page that fails to rasterize is retried instead of staying a placeholder forever; thumbnail captures no longer clone the whole document per page
 
