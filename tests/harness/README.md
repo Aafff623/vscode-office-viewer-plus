@@ -105,3 +105,17 @@ is the tool for testing a hypothesis, the beacons are the evidence channel.
   reproduce real pointer timing or touchpad pinch streams.
 - `docs/probe`-style experiments from earlier rounds live in git history; the
   pages here are the current ones.
+
+## For the REAL preview (issue #1): `webview-probe.js`
+
+Real VS Code testing is the gate; this harness is the fast regression tool. To
+measure inside the actual preview, paste `tests/harness/webview-probe.js` into
+the **webview's** DevTools console (Command Palette -> `Developer: Open Webview
+Developer Tools`), then double-click and Ctrl+wheel as usual. It is passive and
+prints, per gesture, how far the content point that was under the pointer ended
+from where the anchor says it must be (`error` ~ 0 = anchored), labelled
+`dblclick` / `dblclick-restore` / `wheel` (on a restore leg the pointer's
+content point is expected to change — judge the returned view, not that number).
+Call `__ovpProbe.report()` for a table plus a JSON block on the clipboard; it
+also captures the app's own `[ovp:...]` beacons, so the zoom-in legs can be
+cross-checked against `residual` (they matched to 0.1px when this was written).
