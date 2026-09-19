@@ -55,6 +55,27 @@ when reality changes; do not add unverified claims.
   margin depends on the content (half for a centered page, all of it for
   flush-left content), so the response is measured before the exact margin is
   applied. Reset by Ctrl+0 and by `refitForOverlays`.
+- **VS Code's CSS-zoom coordinates are non-standard** (found on-machine while
+  fixing issue #1): VS Code disables Blink's `StandardizedBrowserZoom`, so
+  `getBoundingClientRect()` and Range client rects are *divided by the
+  element's effective CSS zoom* while pointer coordinates and window scrolling
+  stay viewport CSS pixels. Everything rect-based is therefore off by a zoom
+  factor in the real webview — invisible to a plain Chromium harness, which
+  enabled the standard behavior. `clientRectScale()`/`screenRect()` detect the
+  actual behavior once with a marker element (`rectsIncludeZoom`) and normalize
+  caret, box-probe and container rects to viewport px; the detection also
+  covers a future VS Code that enables the standardized behavior. The harness
+  can reproduce the real semantics with `?legacyZoom=1`, which installs a
+  legacy-rectangle shim before the bundle loads and reports
+  `anchor-repro:invalid-geometry` when it cannot (`tests/harness/README.md`).
+- In the same circumstances Blink truncates `MouseEvent` coordinates (integer
+  CSS px) while `PointerEvent` keeps the physical pointer's fractional
+  position, so a double-click anchored on `dblclick.clientX/Y` is off by up to
+  half a pixel at non-integer window zoom. A trusted, primary, left-button
+  mouse release is reused as the anchor (guards: same target, same button,
+  elapsed <= 100ms, `floor(clientX)` equality, same physical point; cleared on
+  pointerdown/keydown/blur), while synthetic and non-mouse input keeps its own
+  coordinates.
 - The second double-click is a view restore, not an anchored zoom-out:
   `ViewSnapshot` captures zoom, window/chain scroll offsets and the content
   offset before the zoom-in, and `restoreViewSnapshot` puts them back —

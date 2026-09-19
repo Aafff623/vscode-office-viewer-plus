@@ -81,6 +81,34 @@ harness reproduced the real geometry:
   move content down beyond what the layout allows — same as native browser
   zoom.
 
+## Addendum (2026-09-19): why the browser harness was exact while the real webview was not
+
+The anchoring work above was measured in a plain Chromium harness and still
+misbehaved in VS Code. The missing fact, found on-machine during the
+investigation tracked in issue #1 and adopted here (commit `37b1578`):
+
+- VS Code disables Blink's `StandardizedBrowserZoom`. In its webview,
+  `getBoundingClientRect()` and Range client rects are divided by the
+  element's effective CSS zoom, while pointer coordinates and window scrolling
+  remain viewport CSS pixels. Every rect-based term in the anchoring math —
+  the container origin, the probe position, the box probe — was therefore
+  scaled by 1/zoom, which produced a constant large error (~300-420px) that no
+  amount of scroll-range reasoning could explain. `clientRectScale()` detects
+  the behavior with a marker element and `screenRect()` normalizes to viewport
+  pixels; a host with the standardized behavior is left alone.
+- The harness now reproduces this: `?legacyZoom=1` installs a legacy-rectangle
+  shim before the bundles load, so the real semantics can be tested in a plain
+  browser (with validity metadata, since a shim that cannot reproduce the
+  behavior must not be trusted).
+- Related and only visible on-machine: `MouseEvent` coordinates are truncated
+  while `PointerEvent` keeps the physical pointer's fractional CSS px, so the
+  anchor now reuses a trusted mouse release; and an anchored cell hidden under
+  a sticky header row is exposed by transferring only the scroll this zoom
+  added to the outer scrollers.
+- What this teaches about verification: a harness that runs the real bundles
+  still has to run them under the *host's* platform semantics. "Works in the
+  harness" only covers the semantics the harness reproduces.
+
 ## Alternatives considered
 
 - **`transform: translate` / `position: relative` offsets** — rejected after
