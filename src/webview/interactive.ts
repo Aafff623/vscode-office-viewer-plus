@@ -195,6 +195,7 @@ export function setupOfficeInteractive(
   let savedZoom: number | null = null;
   let savedView: ViewSnapshot | null = null;
   let fittedZoom: number | null = null;
+  let lastMouseRelease: PointerEvent | null = null;
   // Visual offset of the content, in the container's own (zoomed) px — applied
   // as a margin so it is layout, not paint. Scrolling is the normal way to move
   // the view, but it can only move what has scroll range: centered content that
@@ -423,7 +424,7 @@ export function setupOfficeInteractive(
   function scaleOf(el: Element): number {
     let scale = 1;
     let cur: Element | null = el;
-    while (cur && cur !== document.documentElement) {
+    while (cur) {
       scale *= ownZoom(cur);
       cur = cur.parentElement;
     }
@@ -439,6 +440,42 @@ export function setupOfficeInteractive(
       (window.getComputedStyle(el) as unknown as { zoom?: string }).zoom ?? '1'
     );
     return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  }
+
+  let rectsIncludeZoom: boolean | null = null;
+
+  /**
+   * VS Code disables Blink's StandardizedBrowserZoom: its Element/Range
+   * client rects are divided by the element's effective CSS zoom, while
+   * pointer coordinates and window scrolling remain viewport CSS pixels.
+   * Browsers with that feature enabled already return viewport rects. Detect
+   * the actual behavior once, including when a future VS Code enables it.
+   */
+  function clientRectScale(el: Element): number {
+    if (rectsIncludeZoom === null) {
+      const marker = document.createElement('div');
+      marker.style.cssText = 'all:initial;position:fixed;left:-10000px;top:0;' +
+        'width:16px;height:16px;visibility:hidden;pointer-events:none;zoom:1';
+      document.body.appendChild(marker);
+      try {
+        const width = marker.getBoundingClientRect().width;
+        marker.style.zoom = '2';
+        rectsIncludeZoom = marker.getBoundingClientRect().width > width * 1.5;
+      } finally {
+        marker.remove();
+      }
+    }
+    return rectsIncludeZoom ? 1 : scaleOf(el);
+  }
+
+  function screenRect(el: Element, rect = el.getBoundingClientRect()) {
+    const scale = clientRectScale(el);
+    return {
+      left: rect.left * scale,
+      top: rect.top * scale,
+      width: rect.width * scale,
+      height: rect.height * scale,
+    };
   }
 
   /**
@@ -460,12 +497,15 @@ export function setupOfficeInteractive(
       range.setStart(probe.node, probe.offset);
       range.setEnd(probe.node, Math.min(probe.offset + 1, probe.node.data.length));
       const rect = range.getClientRects()[0];
-      return rect ? { x: rect.left, y: rect.top } : null;
+      const parent = probe.node.parentElement;
+      if (!rect || !parent) return null;
+      const screen = screenRect(parent, rect);
+      return { x: screen.left, y: screen.top };
     }
     if (!probe.el.isConnected) {
       return null;
     }
-    const rect = probe.el.getBoundingClientRect();
+    const rect = screenRect(probe.el);
     if (rect.width < 1 || rect.height < 1) {
       return null;
     }
@@ -506,7 +546,7 @@ export function setupOfficeInteractive(
     }
     const el = document.elementFromPoint(x, y);
     if (el && cont.contains(el)) {
-      const rect = el.getBoundingClientRect();
+      const rect = screenRect(el);
       if (rect.width > 2 && rect.height > 2) {
         return { kind: 'box', el, fx: (x - rect.left) / rect.width, fy: (y - rect.top) / rect.height };
       }
@@ -589,10 +629,21 @@ export function setupOfficeInteractive(
     const cont = getContainer();
     const probe = probeAnchor(pointerX, pointerY);
     const probeStart = probe ? probeScreenPos(probe) : null;
-    const rectBefore = cont?.getBoundingClientRect();
+    const hitBefore = document.elementFromPoint(pointerX, pointerY);
+    const rectBefore = cont ? screenRect(cont) : null;
     scrollChain = collectScrollChain(target);
+    const scrollBefore = captureViewSnapshot();
+    // An offset needed while zoomed out must be recomputed for the new
+    // layout. Scaling a large positive margin can collapse an auto-width
+    // scroll pane and move its clip offscreen; scrolling its contents can
+    // then give a zero Range residual for text that is no longer visible.
+    // The old probe/origin (and the double-click snapshot) are already saved,
+    // so the usual compensation below preserves the material point and undo.
+    if (Math.abs(newZoom - prevZoom) > 1e-9) {
+      resetShift();
+    }
     setZoom(newZoom);
-    const rectAfter = cont?.getBoundingClientRect();
+    const rectAfter = cont ? screenRect(cont) : null;
     let pan: [number, number] | null = null;
     let residual: [number, number] | null = null;
     if (rectBefore && Math.abs(newZoom - prevZoom) > 1e-9) {
@@ -608,8 +659,8 @@ export function setupOfficeInteractive(
       pan = [round1(dx), round1(dy)];
       // Verify against the real layout, then correct what is left. Per axis:
       // an axis the scroll could not take (a pinned element, or the range ran
-      // out) is put back and carried by the content offset instead — once, so
-      // a stale probe cannot fling the view.
+      // out) is put back and carried by the content offset instead. Corrections
+      // stay bounded, but allow a margin to cross from overflow into centering.
       if (probe && probeStart) {
         const expected = expectedProbeScreenPos(
           pointerX,
@@ -626,6 +677,7 @@ export function setupOfficeInteractive(
         const shiftFor = (residual: number, axis: 'x' | 'y'): number => {
           const zoom = ownZoom(cont) || 1;
           const before = probeScreenPos(probe);
+          const measurementView = captureViewSnapshot();
           const probePx = 12;
           if (axis === 'x') {
             addShift(-probePx, 0);
@@ -633,11 +685,9 @@ export function setupOfficeInteractive(
             addShift(0, -probePx);
           }
           const after = probeScreenPos(probe);
-          if (axis === 'x') {
-            addShift(probePx, 0);
-          } else {
-            addShift(0, probePx);
-          }
+          // The temporary margin can shrink the scroll range and clamp the
+          // window. Undo its scroll effects too, not just the margin value.
+          restoreViewSnapshot(measurementView);
           const moved = before && after && axis === 'x' ? after.x - before.x : before && after ? after.y - before.y : 0;
           const response = moved / (-probePx * zoom);
           const factor = Math.abs(response) > 0.05 ? response : 0.5;
@@ -673,14 +723,14 @@ export function setupOfficeInteractive(
           // local px of margin depends on the content (a centered page moves
           // half of it, flush-left content all of it), so the response is
           // measured once and the exact margin is then applied.
-          if (Math.abs(rx) >= 1 && Math.abs(nx) > Math.abs(rx) * 0.5 && shiftPassesX < 2) {
+          if (Math.abs(rx) >= 1 && Math.abs(nx) > Math.abs(rx) * 0.5 && shiftPassesX < 3) {
             restoreViewSnapshot(undo, 'x');
             remainX = 0;
             shiftPassesX += 1;
             shiftedThisPass = true;
             addShift(shiftFor(rx, 'x'), 0);
           }
-          if (Math.abs(ry) >= 1 && Math.abs(ny) > Math.abs(ry) * 0.5 && shiftPassesY < 2) {
+          if (Math.abs(ry) >= 1 && Math.abs(ny) > Math.abs(ry) * 0.5 && shiftPassesY < 3) {
             restoreViewSnapshot(undo, 'y');
             remainY = 0;
             shiftPassesY += 1;
@@ -694,13 +744,85 @@ export function setupOfficeInteractive(
           if (Math.abs(nx) < 1 && Math.abs(ny) < 1) {
             break;
           }
-          if (Math.abs(nx) > Math.abs(rx) * 0.75 || Math.abs(ny) > Math.abs(ry) * 0.75) {
+          // A settled axis can retain a half-pixel error because window
+          // scrolling rounds. It must not stop the other axis converging.
+          const improvingX = Math.abs(nx) >= 1 && Math.abs(nx) <= Math.abs(rx) * 0.75;
+          const improvingY = Math.abs(ny) >= 1 && Math.abs(ny) <= Math.abs(ry) * 0.75;
+          if (!improvingX && !improvingY) {
             break;
           }
         }
       }
+      if (probe && probeStart) {
+        if (hitBefore && cont?.contains(hitBefore)) {
+          uncoverStickyAnchor(probe, hitBefore, pointerX, pointerY, scrollBefore);
+        }
+        // Report measured final geometry, including the last margin pass.
+        const final = probeScreenPos(probe);
+        const expected = expectedProbeScreenPos(pointerX, pointerY, probeStart.x, probeStart.y, newZoom / prevZoom);
+        if (final) residual = [round1(final.x - expected.x), round1(final.y - expected.y)];
+      }
     }
     return { pan, probe: probe ? probe.kind : null, residual };
+  }
+
+  /**
+   * A numerically anchored cell can still disappear under its sticky header.
+   * Transfer only scroll added by this zoom to outer scrollers: the content
+   * stays at the same screen point while the pane and its header move away.
+   * Dragging keeps its usual inner-first policy, and unrelated overlays are
+   * never moved. If available outer range cannot expose the original hit, or
+   * the measured probe moves, restore the attempted transfer in full.
+   */
+  function uncoverStickyAnchor(
+    probe: AnchorProbe,
+    originalHit: Element,
+    x: number,
+    y: number,
+    beforeZoom: ViewSnapshot
+  ): boolean {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || originalHit.contains(hit)) return false;
+    let sticky: Element | null = hit;
+    while (sticky && !scrollChain.includes(sticky)) {
+      const style = window.getComputedStyle(sticky);
+      if (style.position === 'sticky' && style.top !== 'auto') break;
+      sticky = sticky.parentElement;
+    }
+    if (!sticky || scrollChain.includes(sticky) || sticky.contains(originalHit)) return false;
+    let pane = sticky.parentElement;
+    while (pane && !scrollChain.includes(pane)) pane = pane.parentElement;
+    if (!pane || !pane.contains(originalHit)) return false;
+    const old = beforeZoom.chain.find((entry) => entry.el === pane);
+    const amount = old ? (pane.scrollTop - old.y) * scaleOf(pane) : 0;
+    const pointBefore = probeScreenPos(probe);
+    if (!(amount > 0.5) || !pointBefore) return false;
+
+    const undo = captureViewSnapshot();
+    let remaining = amount;
+    for (const outer of scrollChain.slice(scrollChain.indexOf(pane) + 1)) {
+      if (remaining <= 0) break;
+      const previous = outer.scrollTop;
+      writeOffsets([{ el: outer, x: outer.scrollLeft, y: previous + remaining / scaleOf(outer) }]);
+      remaining -= (outer.scrollTop - previous) * scaleOf(outer);
+    }
+    if (remaining > 0) {
+      const previous = window.scrollY;
+      window.scrollBy(0, remaining);
+      remaining -= window.scrollY - previous;
+    }
+    const transferred = amount - remaining;
+    if (transferred > 0 && transferred <= amount + 0.5) {
+      writeOffsets([{ el: pane, x: pane.scrollLeft, y: pane.scrollTop - transferred / scaleOf(pane) }]);
+      const pointAfter = probeScreenPos(probe);
+      const hitAfter = document.elementFromPoint(x, y);
+      if (pointAfter && hitAfter && originalHit.contains(hitAfter) &&
+          Math.abs(pointAfter.x - pointBefore.x) < 1 && Math.abs(pointAfter.y - pointBefore.y) < 1) {
+        return true;
+      }
+    }
+    restoreViewSnapshot(undo);
+    return false;
   }
 
   // Diagnostic snapshot of the scroll chain (innermost first) plus the
@@ -762,6 +884,7 @@ export function setupOfficeInteractive(
   );
 
   function resetState(): void {
+    lastMouseRelease = null;
     isSpacePressed = false;
     isDragging = false;
     dragMoved = false;
@@ -777,6 +900,7 @@ export function setupOfficeInteractive(
   window.addEventListener(
     'pointerdown',
     (e: PointerEvent) => {
+      lastMouseRelease = null;
       if (!e.isPrimary) return;
       const isSpacePan = isSpacePressed && e.button === 0;
       const isMiddlePan = e.button === 1;
@@ -823,6 +947,8 @@ export function setupOfficeInteractive(
   window.addEventListener(
     'pointerup',
     (e: PointerEvent) => {
+      lastMouseRelease = e.isTrusted && e.isPrimary && e.pointerType === 'mouse' &&
+        e.button === 0 && !isDragging && !isSpacePressed ? e : null;
       if (isDragging) {
         isDragging = false;
         scrollChain = [];
@@ -875,7 +1001,21 @@ export function setupOfficeInteractive(
   // puts back the zoom and every scroll offset captured before the zoom-in,
   // so going back always lands on the region the user zoomed in from.
   if (options.doubleClickZoom) {
+    // At non-integer window zoom Blink truncates MouseEvent coordinates even
+    // though PointerEvent retains the physical pointer's fractional CSS px.
+    // Reuse only this mouse release; stale, synthetic and non-mouse inputs
+    // keep their own coordinates. Consume it even when chrome rejects zoom.
+    window.addEventListener('keydown', () => { lastMouseRelease = null; }, { capture: true });
     window.addEventListener('dblclick', (e: MouseEvent) => {
+      const release = lastMouseRelease;
+      lastMouseRelease = null;
+      const elapsed = release ? e.timeStamp - release.timeStamp : -1;
+      const matched = release && e.isTrusted && e.detail === 2 &&
+        release.target === e.target && release.button === e.button && elapsed >= 0 && elapsed <= 100 &&
+        Math.floor(release.clientX) === e.clientX && Math.floor(release.clientY) === e.clientY &&
+        Math.abs(release.screenX - e.screenX) < 1 && Math.abs(release.screenY - e.screenY) < 1;
+      const pointerX = matched ? release.clientX : e.clientX;
+      const pointerY = matched ? release.clientY : e.clientY;
       // Double-clicks on interactive chrome (links, buttons, sheet tabs,
       // thumbnail cards) keep their native meaning and must not zoom.
       const target = e.target as Element | null;
@@ -924,7 +1064,7 @@ export function setupOfficeInteractive(
       savedView = captureViewSnapshot();
       const scrollBefore = snapScrollState(scrollChain);
       savedZoom = result.saved;
-      const outcome = anchorZoom(result.zoom, e.clientX, e.clientY, target);
+      const outcome = anchorZoom(result.zoom, pointerX, pointerY, target);
       // Anchor beacon: every input to the compensation plus the scroll state
       // before/after, so one pasted console line decides between stale build /
       // handler-not-run / wrong pan / pan-overwritten. `residual` is the
@@ -935,7 +1075,8 @@ export function setupOfficeInteractive(
       console.log('[ovp:dblclick]', {
         build: window.__OVP_BUILD__?.bundle ?? '?',
         leg: 'in',
-        pointer: [e.clientX, e.clientY],
+        pointer: [pointerX, pointerY],
+        eventPointer: [e.clientX, e.clientY],
         zoom: [Math.round(prevZoom * 1000) / 1000, Math.round(result.zoom * 1000) / 1000],
         effectiveZoom:
           Math.round(ownZoom(cont) * ownZoom(cont?.firstElementChild) * 1000) / 1000,

@@ -46,6 +46,41 @@ copy(JSON.stringify({legs: __ANCHOR.legs.map(l => ({n: l.name, r: l.beacon && l.
   errs: __ANCHOR.errs}, null, 1))
 ```
 
+## Reproduce VS Code's legacy CSS zoom coordinates
+
+Add `legacyZoom=1` to `anchor-repro.html`, for example:
+
+```
+http://127.0.0.1:8143/tests/harness/anchor-repro.html?fmt=docx&legacyZoom=1
+```
+
+VS Code disables Blink's `StandardizedBrowserZoom` feature, so its native
+Element/Range rectangles exclude effective CSS zoom while pointer coordinates
+remain viewport CSS pixels. A plain Chromium page normally returns rectangles
+including CSS zoom. This option detects the native behavior with a temporary
+box measured at zoom 1 and 2, then installs a legacy rectangle shim **before
+loading the real bundle**, only when native rectangles are standardized. A
+browser already using legacy semantics is left unpatched. Without this option,
+the native geometry APIs are unchanged.
+
+The shim covers Element/Range `getBoundingClientRect()` and `getClientRects()`.
+It divides both origins and dimensions by the full CSS zoom product, including
+the measured element and every ancestor. Scroll offsets, scroll ranges,
+pointer coordinates and hit testing are unchanged. The harness's own readings
+bypass the shim using captured native methods; on a genuinely legacy host they
+multiply native rectangles back into viewport CSS pixels. This prevents the
+app and the harness from agreeing on the same wrong coordinate units.
+
+Inspect `__ANCHOR.geometry` alongside the gesture results. It records the
+requested mode, native detector measurements, active mode, shim installation,
+measurement units, validity and warnings. Unknown native semantics abort the
+run. A Range spanning descendants with different effective CSS zoom is outside
+this small shim's scope: it marks the run invalid and the final title becomes
+`anchor-repro:invalid-geometry`. The harness's one-character caret probes each
+have a single text owner and do not have this ambiguity. Synthetic gestures and
+this geometry shim are regression evidence, not a replacement for native
+mouse/touchpad testing in the actual VS Code webview.
+
 ## Samples
 
 `docx` and `xlsx` have bundled **synthetic** samples in `samples/`. For

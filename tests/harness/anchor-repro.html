@@ -31,6 +31,120 @@
     return origLog.apply(console, arguments);
   };
 </script>
+<script id="legacy-zoom-compat">
+(() => {
+  // VS Code disables Blink's StandardizedBrowserZoom. Opt in before loading
+  // the real bundle so its geometry reads see the same legacy units.
+  const requested = new URLSearchParams(location.search).get('legacyZoom') === '1';
+  const native = {
+    elementRect: Element.prototype.getBoundingClientRect,
+    elementRects: Element.prototype.getClientRects,
+    rangeRect: Range.prototype.getBoundingClientRect,
+    rangeRects: Range.prototype.getClientRects,
+  };
+  const metadata = {
+    requestedLegacy: requested, nativeMode: 'unknown', activeMode: 'unknown',
+    shimInstalled: false, measurementUnits: 'viewport CSS pixels',
+    valid: true, warnings: [], nativeProbe: null,
+  };
+  const invalidate = (message) => {
+    metadata.valid = false;
+    if (!metadata.warnings.includes(message)) metadata.warnings.push(message);
+  };
+  const effectiveZoom = (el) => {
+    let scale = 1;
+    for (let node = el; node; node = node.parentElement) {
+      const value = String(getComputedStyle(node).zoom || '1');
+      let zoom = parseFloat(value);
+      if (value.endsWith('%')) zoom /= 100;
+      if (Number.isFinite(zoom) && zoom > 0) scale *= zoom;
+    }
+    return scale;
+  };
+  const scaledRect = (rect, scale) => new DOMRect(
+    rect.left * scale, rect.top * scale, rect.width * scale, rect.height * scale);
+  const rectList = (rects, scale) => {
+    const list = Array.from(rects, (rect) => scaledRect(rect, scale));
+    // DOMRectList's indexed access, length, iteration and item() contract.
+    Object.defineProperty(list, 'item', { value: (index) => list[index] || null });
+    return list;
+  };
+  const rangeZoom = (range) => {
+    const common = range.commonAncestorContainer;
+    const owner = common.nodeType === 1 ? common : common.parentElement;
+    if (!owner) return 1;
+    const scale = effectiveZoom(owner);
+    // Single-character probes have one text owner. Arbitrary ranges spanning
+    // differently zoomed descendants need per-fragment owners, which this
+    // deliberately small shim cannot infer from anonymous native rectangles.
+    if (common.nodeType !== 3) {
+      for (const el of owner.querySelectorAll('*')) {
+        if (range.intersectsNode(el) && Math.abs(effectiveZoom(el) - scale) > 1e-8) {
+          invalidate('Mixed-zoom Range encountered; this run is not a valid legacy reproduction.');
+          return null;
+        }
+      }
+    }
+    return scale;
+  };
+
+  const marker = document.createElement('div');
+  marker.style.cssText = 'all:initial;position:fixed;left:10px;top:10px;' +
+    'width:40px;height:20px;margin:0;padding:0;border:0;transform:none;' +
+    'visibility:hidden;pointer-events:none;zoom:1';
+  document.documentElement.appendChild(marker);
+  try {
+    const width1 = native.elementRect.call(marker).width;
+    marker.style.zoom = '2';
+    const width2 = native.elementRect.call(marker).width;
+    const ratio = width2 / width1;
+    metadata.nativeProbe = { width1, width2, ratio };
+    if (Math.abs(ratio - 2) < 0.01) metadata.nativeMode = 'standard';
+    else if (Math.abs(ratio - 1) < 0.01) metadata.nativeMode = 'legacy';
+    else invalidate('Unrecognized native CSS zoom rectangle semantics.');
+  } finally {
+    marker.remove();
+  }
+  metadata.activeMode = metadata.nativeMode;
+
+  if (requested && metadata.nativeMode === 'standard') {
+    Element.prototype.getBoundingClientRect = function () {
+      return scaledRect(native.elementRect.call(this), 1 / effectiveZoom(this));
+    };
+    Element.prototype.getClientRects = function () {
+      return rectList(native.elementRects.call(this), 1 / effectiveZoom(this));
+    };
+    Range.prototype.getBoundingClientRect = function () {
+      const rect = native.rangeRect.call(this), scale = rangeZoom(this);
+      return scale === null ? rect : scaledRect(rect, 1 / scale);
+    };
+    Range.prototype.getClientRects = function () {
+      const rects = native.rangeRects.call(this), scale = rangeZoom(this);
+      return scale === null ? rects : rectList(rects, 1 / scale);
+    };
+    metadata.shimInstalled = true;
+    metadata.activeMode = 'legacy';
+  }
+
+  // Independent measurements bypass our shim. When the host itself is
+  // legacy, convert its native rectangles back to viewport CSS pixels.
+  // Never scale pointer coordinates, element scroll offsets or scroll ranges.
+  window.__OVP_HARNESS_GEOMETRY__ = {
+    metadata,
+    elementRect(el) {
+      const rect = native.elementRect.call(el);
+      return metadata.nativeMode === 'legacy' ? scaledRect(rect, effectiveZoom(el)) : rect;
+    },
+    rangeRects(range) {
+      const rects = native.rangeRects.call(range);
+      if (metadata.nativeMode !== 'legacy') return rects;
+      const scale = rangeZoom(range);
+      if (scale === null) throw new Error(metadata.warnings[metadata.warnings.length - 1]);
+      return rectList(rects, scale);
+    },
+  };
+})();
+</script>
 <script>
 (async () => {
   const params = new URLSearchParams(location.search);
@@ -39,8 +153,10 @@
   }
   const fmtParam = params.get('fmt');
   const fmt = ['docx', 'xlsx', 'pptx', 'pdf'].includes(fmtParam) ? fmtParam : 'xlsx';
-  const RESULT = { fmt, ua: navigator.userAgent, legs: [], beacons: window.__beacons, errs: window.__errs };
+  const geometry = window.__OVP_HARNESS_GEOMETRY__;
+  const RESULT = { fmt, ua: navigator.userAgent, geometry: geometry.metadata, legs: [], beacons: window.__beacons, errs: window.__errs };
   window.__ANCHOR = RESULT;
+  if (!geometry.metadata.valid) throw new Error(geometry.metadata.warnings.join(' '));
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const container = document.getElementById('container');
@@ -113,7 +229,7 @@
     zoom: zoomOf(container),
     win: [Math.round(window.scrollX), Math.round(window.scrollY)],
     sheet: scroller ? [Math.round(scroller.scrollLeft), Math.round(scroller.scrollTop)] : null,
-    sheetBox: scroller ? (() => { const r = scroller.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10); })() : null,
+    sheetBox: scroller ? (() => { const r = geometry.elementRect(scroller); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10); })() : null,
   });
 
   // The content point under (x,y): caret node + offset, plus its screen pos.
@@ -128,7 +244,7 @@
       const rr = document.createRange();
       rr.setStart(node, o);
       rr.setEnd(node, o + 1);
-      const rc = rr.getClientRects()[0];
+      const rc = geometry.rangeRects(rr)[0];
       if (rc && rc.width >= 0) { rect = rc; offset = o; break; }
     }
     if (!rect) return null;
@@ -139,11 +255,11 @@
       const rr = document.createRange();
       rr.setStart(p.node, p.offset);
       rr.setEnd(p.node, Math.min(p.offset + 1, p.node.data.length));
-      const rc = rr.getClientRects()[0];
+      const rc = geometry.rangeRects(rr)[0];
       return rc ? { sx: rc.left, sy: rc.top } : null;
     }
     if (p.el && p.el.isConnected) {
-      const r = p.el.getBoundingClientRect();
+      const r = geometry.elementRect(p.el);
       return { sx: r.left + p.fx * r.width, sy: r.top + p.fy * r.height };
     }
     return null;
@@ -155,7 +271,7 @@
     if (c) return c;
     const el = document.elementFromPoint(x, y);
     if (!el) return null;
-    const r = el.getBoundingClientRect();
+    const r = geometry.elementRect(el);
     if (r.width < 2 || r.height < 2) return null;
     return { el, fx: (x - r.left) / r.width, fy: (y - r.top) / r.height };
   };
@@ -171,7 +287,7 @@
     if (c) return { kind: 'caret', node: c.node, offset: c.offset, sx: c.sx, sy: c.sy };
     const el = document.elementFromPoint(x, y);
     if (!el) return null;
-    const r = el.getBoundingClientRect();
+    const r = geometry.elementRect(el);
     if (r.width < 2 || r.height < 2) return null;
     const fx = (x - r.left) / r.width;
     const fy = (y - r.top) / r.height;
@@ -199,7 +315,7 @@
   // Find a screen point that sits on real text (cell text for xlsx, body text
   // for docx), well inside the area the user would double-click.
   const pickPoint = (header, opts_corner, opts_right) => {
-    const r = scroller ? scroller.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const r = scroller ? geometry.elementRect(scroller) : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
     // Sticky-header scenario: the probe sits in a pinned header, which does
     // NOT follow the scroll — the correction loop must detect that and stop
     // instead of repeating its write.
@@ -439,7 +555,7 @@
   await runScenario('S10-right-click', { pickRight: true, moveBeforeRestore: { dx: -60, dy: 80 } });
 
   RESULT.errs = window.__errs.slice();
-  document.title = 'anchor-repro:done';
+  document.title = geometry.metadata.valid ? 'anchor-repro:done' : 'anchor-repro:invalid-geometry';
 })().catch((e) => {
   window.__ANCHOR = window.__ANCHOR || {};
   window.__ANCHOR.fatal = String(e && e.stack || e);
