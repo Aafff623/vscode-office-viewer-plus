@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>anchor-repro</title>
+<link rel="stylesheet" href="/media/viewer.css?v=repro1">
+<style>body { background: #f3f3f3; }</style>
+</head>
+<body>
+<div id="status" class="status">Loading preview…</div>
+<div id="container" class="container"></div>
+<script>
+  window.acquireVsCodeApi = function () {
+    return { postMessage: function () {}, setState: function () {}, getState: function () { return null; } };
+  };
+  window.__errs = [];
+  window.addEventListener('error', function (e) { window.__errs.push(String(e.message)); });
+  window.addEventListener('unhandledrejection', function (e) { window.__errs.push(String(e.reason)); });
+
+  // Capture the interactive controller's beacons so the run can report them.
+  window.__beacons = [];
+  var origLog = console.log;
+  console.log = function () {
+    try {
+      if (typeof arguments[0] === 'string' && arguments[0].indexOf('[ovp:') === 0) {
+        window.__beacons.push(Array.prototype.slice.call(arguments).map(function (a) {
+          try { return JSON.parse(JSON.stringify(a)); } catch (e) { return String(a); }
+        }));
+      }
+    } catch (e) {}
+    return origLog.apply(console, arguments);
+  };
+</script>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get('debug')) {
+    window.__OVP_DEBUG__ = true;
+  }
+  const fmtParam = params.get('fmt');
+  const fmt = ['docx', 'xlsx', 'pptx', 'pdf'].includes(fmtParam) ? fmtParam : 'xlsx';
+  const RESULT = { fmt, ua: navigator.userAgent, legs: [], beacons: window.__beacons, errs: window.__errs };
+  window.__ANCHOR = RESULT;
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const container = document.getElementById('container');
+
+  const BUNDLES = { docx: '/dist/webview-docx.js', xlsx: '/dist/webview-xlsx.js', pptx: '/dist/webview-pptx.js', pdf: '/dist/webview-pdf.js' };
+  // Defaults live next to this page so the harness runs out of the box for
+  // docx/xlsx; pptx and pdf have no bundled sample (drop your own file in
+  // samples/ or pass ?sample=<path relative to the repo root>).
+  const SAMPLES = {
+    docx: '/tests/harness/samples/anchor-sample.docx',
+    xlsx: '/tests/harness/samples/anchor-sample.xlsx',
+    pptx: '/tests/harness/samples/anchor-sample.pptx',
+    pdf: '/tests/harness/samples/anchor-sample.pdf',
+  };
+  const sampleOverride = params.get('sample');
+  if (sampleOverride) {
+    SAMPLES[fmt] = '/' + sampleOverride.replace(/^\/+/, '');
+  }
+  const READY = {
+    docx: '.docx-wrapper section.docx',
+    xlsx: '.xlsx-sheet td',
+    pptx: '.pptx-preview-slide-wrapper',
+    pdf: 'canvas.pdf-page',
+  };
+  const bundle = BUNDLES[fmt];
+  const sample = SAMPLES[fmt];
+  const readySelector = READY[fmt];
+
+  if (fmt === 'pdf') {
+    window.__PDF_WORKER_SRC__ = '/media/pdf.worker.min.mjs';
+    window.__PDF_WASM_URL__ = '/media/pdfjs-wasm/';
+    window.__PDF_CMAP_URL__ = '/media/pdfjs-cmaps/';
+    window.__PDF_STDFONT_URL__ = '/media/pdfjs-fonts/';
+  }
+
+  // ---- real-bundle load + real message protocol -------------------------
+  await new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = bundle + '?v=repro1';
+    s.onload = resolve;
+    document.body.appendChild(s);
+  });
+  const resp = await fetch(sample + '?t=' + Date.now());
+  if (!resp.ok) {
+    document.title = 'anchor-repro:missing-sample';
+    console.log('[anchor-repro] cannot load', sample, '->', resp.status,
+      '| docx/xlsx samples ship in tests/harness/samples/; for pptx/pdf put your own file there or run with ?sample=<path from the repo root>');
+    return;
+  }
+  const buf = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  window.dispatchEvent(new MessageEvent('message', {
+    data: { type: 'render', kind: fmt, data: btoa(bin), fileName: sample.split('/').pop(), baseUri: '' },
+  }));
+  for (let i = 0; i < 140; i++) {
+    await sleep(150);
+    if (container.querySelector(readySelector)) break;
+  }
+  await sleep(600);
+  RESULT.rendered = !!container.querySelector(readySelector);
+
+  // ---- measurement helpers ---------------------------------------------
+  const zoomOf = (el) => parseFloat(getComputedStyle(el).zoom) || 1;
+  const scroller = fmt === 'xlsx' ? container.querySelector('.xlsx-sheet') : null;
+
+  const scrollState = () => ({
+    zoom: zoomOf(container),
+    win: [Math.round(window.scrollX), Math.round(window.scrollY)],
+    sheet: scroller ? [Math.round(scroller.scrollLeft), Math.round(scroller.scrollTop)] : null,
+    sheetBox: scroller ? (() => { const r = scroller.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10); })() : null,
+  });
+
+  // The content point under (x,y): caret node + offset, plus its screen pos.
+  const caretAt = (x, y) => {
+    const r = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+    if (!r || !r.startContainer || r.startContainer.nodeType !== 3 || !r.startContainer.data.trim()) return null;
+    const node = r.startContainer;
+    let offset = r.startOffset;
+    let rect = null;
+    for (const o of [offset, offset - 1, offset + 1]) {
+      if (o < 0 || o >= node.data.length) continue;
+      const rr = document.createRange();
+      rr.setStart(node, o);
+      rr.setEnd(node, o + 1);
+      const rc = rr.getClientRects()[0];
+      if (rc && rc.width >= 0) { rect = rc; offset = o; break; }
+    }
+    if (!rect) return null;
+    return { node, offset, sx: rect.left, sy: rect.top };
+  };
+  const posOf = (p) => {
+    if (p.node) {
+      const rr = document.createRange();
+      rr.setStart(p.node, p.offset);
+      rr.setEnd(p.node, Math.min(p.offset + 1, p.node.data.length));
+      const rc = rr.getClientRects()[0];
+      return rc ? { sx: rc.left, sy: rc.top } : null;
+    }
+    if (p.el && p.el.isConnected) {
+      const r = p.el.getBoundingClientRect();
+      return { sx: r.left + p.fx * r.width, sy: r.top + p.fy * r.height };
+    }
+    return null;
+  };
+  // PDF pages are canvases with no text layer: fall back to the same
+  // fractional-position probe the app uses there.
+  const probeAt = (x, y) => {
+    const c = caretAt(x, y);
+    if (c) return c;
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return null;
+    return { el, fx: (x - r.left) / r.width, fy: (y - r.top) / r.height };
+  };
+  const samePoint = (a, b) => a.node === b.node && a.offset === b.offset;
+
+  // Model-independent check: which content sits under a SCREEN point. If the
+  // pointer anchor held, the answer must not change across the zoom (same text
+  // node within a character or two, or the same element with the same
+  // fractional position). This deliberately does not use the app's expectation
+  // formula, so it cannot agree with a wrong model.
+  const underPointer = (x, y) => {
+    const c = caretAt(x, y);
+    if (c) return { kind: 'caret', node: c.node, offset: c.offset, sx: c.sx, sy: c.sy };
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return null;
+    const fx = (x - r.left) / r.width;
+    const fy = (y - r.top) / r.height;
+    return { kind: 'box', el, fx, fy, sx: r.left + fx * r.width, sy: r.top + fy * r.height };
+  };
+  const underDelta = (a, b) => {
+    if (!a || !b || a.kind !== b.kind) return null;
+    const px = (a.sx != null && b.sx != null)
+      ? [Math.round((b.sx - a.sx) * 10) / 10, Math.round((b.sy - a.sy) * 10) / 10]
+      : null;
+    if (a.kind === 'caret') {
+      return { kind: 'caret', sameNode: a.node === b.node, offsetDelta: a.node === b.node ? Math.abs(a.offset - b.offset) : null, px };
+    }
+    return { kind: 'box', sameEl: a.el === b.el, fractionDelta: a.el === b.el ? [Math.round((b.fx - a.fx) * 1e4) / 1e4, Math.round((b.fy - a.fy) * 1e4) / 1e4] : null, px };
+  };
+
+  const dbl = (x, y) => {
+    const el = document.elementFromPoint(x, y) || document.body;
+    el.dispatchEvent(new MouseEvent('dblclick', {
+      clientX: x, clientY: y, bubbles: true, cancelable: true, view: window,
+    }));
+    return el.tagName + (el.className ? '.' + String(el.className).split(' ')[0] : '');
+  };
+
+  // Find a screen point that sits on real text (cell text for xlsx, body text
+  // for docx), well inside the area the user would double-click.
+  const pickPoint = (header, opts_corner, opts_right) => {
+    const r = scroller ? scroller.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    // Sticky-header scenario: the probe sits in a pinned header, which does
+    // NOT follow the scroll — the correction loop must detect that and stop
+    // instead of repeating its write.
+    // Top-left corner of the pane: with the scroller already at its origin the
+    // compensation wants to scroll further left/up and must clamp — a reverse
+    // write must never be invented on top of that.
+    if (opts_corner && scroller) {
+      for (const [dx, dy] of [[30, 60], [60, 70], [40, 50], [120, 60]]) {
+        const x = Math.round(r.left + dx);
+        const y = Math.round(r.top + dy);
+        const p = probeAt(x, y);
+        if (p) return { x, y, p };
+      }
+    }
+    if (header && scroller) {
+      for (const fx of [0.5, 0.35, 0.65]) {
+        for (const dy of [12, 22]) {
+          const x = Math.round(r.left + r.width * fx);
+          const y = Math.round(r.top + dy);
+          const p = probeAt(x, y);
+          if (p) return { x, y, p };
+        }
+      }
+    }
+    const x0 = r.left + 40, x1 = r.left + r.width - 40;
+    const y0 = scroller ? r.top + 40 : 80, y1 = scroller ? r.top + r.height - 40 : window.innerHeight - 120;
+    const xLo = opts_right ? 0.74 : 0.35;
+    const xHi = opts_right ? 0.86 : 0.65;
+    for (let iy = 0; iy < 5; iy++) {
+      for (let ix = 0; ix < 5; ix++) {
+        const x = Math.round(x0 + ((x1 - x0) * (xLo + (xHi - xLo) * (ix / 4))) );
+        const y = Math.round(y0 + ((y1 - y0) * (0.3 + 0.1 * iy)));
+        const p = probeAt(x, y);
+        if (p) return { x, y, p };
+      }
+    }
+    return null;
+  };
+
+  const lastBeacon = () => {
+    const b = window.__beacons.filter((a) => a[0] === '[ovp:dblclick]').slice(-1)[0];
+    return b ? b[1] : null;
+  };
+
+  const leg = async (name, startState, action) => {
+    const before = { state: scrollState() };
+    const anchorPoint = before.anchor = action.anchor;   // content point we care about
+    const anchorPos = before.anchorPos = posOf(anchorPoint);
+    const underBefore = action.target ? underPointer(action.target.x, action.target.y) : null;
+    const target = action.target ? dbl(action.target.x, action.target.y) : null;
+    await sleep(320);
+    const mid = { state: scrollState(), pos: posOf(anchorPoint) };
+    await sleep(2000);                                    // catch late layout/settle effects
+    const after = { state: scrollState(), pos: posOf(anchorPoint) };
+    // Correct expectation: a point d px away from the pointer must end at
+    // d x (newZoom/oldZoom) away — NOT stay put.
+    const ratio = after.state.zoom / before.state.zoom;
+    const exp = action.expectAt != null ? action.expectAt : null;
+    RESULT.legs.push({
+      name,
+      dispatchTarget: target,
+      zoom: [before.state.zoom, after.state.zoom],
+      win: [before.state.win, after.state.win],
+      sheet: [before.state.sheet, after.state.sheet],
+      anchorStart: before.anchorPos,
+      anchorMid: mid.pos,
+      anchorLate: after.pos,
+      drift320: mid.pos ? [Math.round((mid.pos.sx - anchorPos.sx) * 100) / 100, Math.round((mid.pos.sy - anchorPos.sy) * 100) / 100] : null,
+      driftLate: after.pos ? [Math.round((after.pos.sx - anchorPos.sx) * 100) / 100, Math.round((after.pos.sy - anchorPos.sy) * 100) / 100] : null,
+      expectedLate: exp && after.pos ? [Math.round((exp[0] - anchorPos.sx) * 100) / 100, Math.round((exp[1] - anchorPos.sy) * 100) / 100] : null,
+      anchorError: exp && after.pos ? [Math.round((after.pos.sx - exp[0]) * 10) / 10, Math.round((after.pos.sy - exp[1]) * 10) / 10] : null,
+      underBefore,
+      underAfter: action.target ? underPointer(action.target.x, action.target.y) : null,
+      underDelta: action.target ? underDelta(underBefore, underPointer(action.target.x, action.target.y)) : null,
+      beacon: lastBeacon(),
+      startState,
+    });
+    return { mid, after };
+  };
+
+  // A scenario mirrors the user's flow: double-click a region, look at it,
+  // double-click again to go back.
+  const runScenario = async (label, opts) => {
+    opts = opts || {};
+    // Deterministic start, driven through the app's own controls so its
+    // internal zoom state matches the DOM (writing style.zoom directly would
+    // leave curZoom stale and invalidate the measurement).
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: '0', code: 'Digit0', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    await sleep(150);
+    if (opts.fit) {
+      // Mimic the editor: the first resize makes the app fit the pane.
+      window.dispatchEvent(new Event('resize'));
+      await sleep(300);
+      window.dispatchEvent(new Event('resize'));
+      await sleep(300);
+    }
+    window.scrollTo(0, 0);
+    if (scroller) { scroller.scrollTop = opts.sheetTop != null ? opts.sheetTop : 600; scroller.scrollLeft = opts.sheetLeft != null ? opts.sheetLeft : 120; }
+    if (opts.edge) {
+      // Push every scroller to its maximum: the compensation now wants to
+      // scroll past the end and must clamp without overshooting.
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      if (scroller) { scroller.scrollTop = scroller.scrollHeight; scroller.scrollLeft = scroller.scrollWidth; }
+    }
+    if (opts.wheelZoom) {
+      for (let i = 0; i < 40 && zoomOf(container) < opts.wheelZoom - 0.02; i++) {
+        window.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+      }
+    }
+    await sleep(250);
+    RESULT.startZoom = zoomOf(container);
+    // Wheel-only scenario: ctrl+wheel must keep the content point at the
+    // middle of the pane pinned there (the user-visible "centered zoom").
+    if (opts.wheelCenter) {
+      const cx = Math.round(window.innerWidth / 2);
+      const cy = Math.round(window.innerHeight / 2);
+      const beforeState = scrollState();
+      const before = underPointer(cx, cy);
+      const ticks = opts.wheelCenter;
+      for (let i = 0; i < Math.abs(ticks); i++) {
+        window.dispatchEvent(new WheelEvent('wheel', { deltaY: ticks > 0 ? -100 : 100, ctrlKey: true, bubbles: true, cancelable: true }));
+      }
+      await sleep(320);
+      const after = underPointer(cx, cy);
+      RESULT.legs.push({
+        name: label + '/wheelCenter' + (ticks > 0 ? '+in' : '-out'),
+        zoom: [beforeState.zoom, scrollState().zoom],
+        win: [beforeState.win, scrollState().win],
+        sheet: [beforeState.sheet, scrollState().sheet],
+        underDelta: underDelta(before, after),
+        centerPoint: [cx, cy],
+      });
+      return;
+    }
+
+    const start = scrollState();
+    const pick = pickPoint(!!opts.header, !!opts.corner, !!opts.pickRight);
+    if (!pick) { RESULT.legs.push({ name: label, error: 'no text point found', start }); return; }
+    const ratio = 1.5 / start.zoom;
+
+    // Probed point screen position at capture (works for both probe kinds).
+    const p0 = posOf(pick.p) || { sx: pick.p.sx, sy: pick.p.sy };
+
+    // 1) zoom in at the picked region
+    await leg(label + '/zoomIn', start, {
+      anchor: pick.p,
+      target: { x: pick.x, y: pick.y },
+      // where the probed point must land if the pointer anchor held
+      expectAt: [pick.x + (p0.sx - pick.x) * ratio, pick.y + (p0.sy - pick.y) * ratio],
+    });
+
+    // 2) restore: either at the same point (user's normal flow) or at a moved
+    //    point (user moved the mouse before the second double-click)
+    const zoomedState = scrollState();
+    const move = opts.moveBeforeRestore || { dx: 0, dy: 0 };
+    const rx = pick.x + move.dx, ry = pick.y + move.dy;
+    const p2 = probeAt(rx, ry) || pick.p;
+    const { mid } = await leg(label + '/restore@' + (move.dx || move.dy ? 'moved' : 'same'), zoomedState, {
+      anchor: pick.p,
+      target: { x: rx, y: ry },
+      // a restore must put the probed point back exactly where it started
+      expectAt: [p0.sx, p0.sy],
+    });
+    const view = RESULT.legs[RESULT.legs.length - 1];
+    view.restoreTargetPoint = p2 ? { x: rx, y: ry } : null;
+    // Requirement check: after the second double-click the view must be the
+    // one the user zoomed in from — same zoom, same scroll offsets, and the
+    // content point that was under the cursor is back under it.
+    const final = scrollState();
+    view.regionRestore = {
+      stateEqual:
+        Math.abs(final.zoom - start.zoom) < 1e-6 &&
+        final.win[0] === start.win[0] && final.win[1] === start.win[1] &&
+        JSON.stringify(final.sheet) === JSON.stringify(start.sheet),
+      start: { zoom: start.zoom, win: start.win, sheet: start.sheet },
+      final: { zoom: final.zoom, win: final.win, sheet: final.sheet },
+      probeBackAtOrigin: view.anchorError,
+    };
+    if (opts.corner && scroller) {
+      const zoomLeg = RESULT.legs[RESULT.legs.length - 2];
+      if (zoomLeg && zoomLeg.beacon && zoomLeg.sheet && zoomLeg.sheet[0]) {
+        const panX = zoomLeg.beacon.pan ? zoomLeg.beacon.pan[0] : null;
+        const deltaX = zoomLeg.sheet[1][0] - zoomLeg.sheet[0][0];
+        view.reverseJumpCheck = {
+          panX,
+          sheetDeltaX: deltaX,
+          bogusReverseMove: panX != null && panX < 0 && deltaX > 1,
+        };
+      }
+    }
+    if (opts.header && scroller) {
+      // What the content actually moved vs. what the analytic pan asked for:
+      // a correction that failed to converge must not multiply this.
+      const zoomLeg = RESULT.legs[RESULT.legs.length - 2];
+      const panY = zoomLeg && zoomLeg.beacon ? zoomLeg.beacon.pan[1] : null;
+      const d0 = zoomLeg ? zoomLeg.sheet[0][1] : null;
+      const d1 = zoomLeg ? zoomLeg.sheet[1][1] : null;
+      view.stickyCheck = panY == null || d0 == null
+        ? null
+        : { panY, expectedLocalDelta: Math.round((panY / 1.5) * 10) / 10, actualLocalDelta: d1 - d0 };
+    }
+  };
+
+  RESULT.initial = scrollState();
+
+  // S1: plain flow — zoom in, then double-click again to go back (cursor unmoved)
+  await runScenario('S1-plain');
+  // S2: cursor moved between the two double-clicks — must still return to the
+  //     region the user zoomed in from
+  await runScenario('S2-moved-cursor', { moveBeforeRestore: { dx: 140, dy: 90 } });
+  // S3: starting from the pane-fitted zoom (the real editor start), same flow
+  await runScenario('S3-fitted-start', { fit: true });
+  // S4: fitted start + moved cursor
+  await runScenario('S4-fitted-moved', { fit: true, moveBeforeRestore: { dx: 140, dy: 90 } });
+  // S5: probe inside a sticky header while the pane is scrolled — the loop
+  //     must not repeat a correction the probe cannot see.
+  await runScenario('S5-sticky-header', { header: true, moveBeforeRestore: { dx: 60, dy: 120 } });
+  // S6: start well above 150% (ctrl+wheel), so the double-click zooms OUT —
+  //     the opposite sign of the same math — then restore to that zoom.
+  await runScenario('S6-wide-zoom', { wheelZoom: 2.4, moveBeforeRestore: { dx: 80, dy: 60 } });
+  // S7: every scroller already at its end: the pan must clamp, not overshoot,
+  //     and the restore must still reproduce the pre-zoom view exactly.
+  await runScenario('S7-edge-clamp', { edge: true, moveBeforeRestore: { dx: 90, dy: -70 } });
+  // S8: zoomed in via ctrl+wheel with every scroller at its origin, then a
+  //     double-click near the top-left: the correction is clamped, so nothing
+  //     may move in the opposite direction either.
+  await runScenario('S8-clamped-corner', { wheelZoom: 2.4, sheetTop: 0, sheetLeft: 0, corner: true, moveBeforeRestore: { dx: 70, dy: 90 } });
+  // S9: ctrl+wheel must keep the middle of the pane pinned (centered zoom),
+  //     both widening and narrowing.
+  await runScenario('S9-wheel-in', { wheelCenter: 4 });
+  await runScenario('S9-wheel-out', { wheelCenter: -3 });
+  await runScenario('S9-wheel-in-fitted', { fit: true, wheelCenter: 4 });
+  // S10: double-click on the RIGHT side of centered content — the case that
+  //      used to drift left because the re-centering had no scroll range.
+  await runScenario('S10-right-click', { pickRight: true, moveBeforeRestore: { dx: -60, dy: 80 } });
+
+  RESULT.errs = window.__errs.slice();
+  document.title = 'anchor-repro:done';
+})().catch((e) => {
+  window.__ANCHOR = window.__ANCHOR || {};
+  window.__ANCHOR.fatal = String(e && e.stack || e);
+  document.title = 'anchor-repro:fatal';
+});
+</script>
+</body>
+</html>

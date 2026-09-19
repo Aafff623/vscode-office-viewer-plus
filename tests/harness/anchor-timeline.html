@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>anchor-timeline</title>
+<link rel="stylesheet" href="/media/viewer.css?v=tl1">
+<style>body { background: #f3f3f3; }</style>
+</head>
+<body>
+<div id="status" class="status">Loading preview…</div>
+<div id="container" class="container"></div>
+<script>
+  window.acquireVsCodeApi = function () {
+    return { postMessage: function () {}, setState: function () {}, getState: function () { return null; } };
+  };
+  window.__errs = [];
+  window.addEventListener('error', function (e) { window.__errs.push(String(e.message)); });
+  window.addEventListener('unhandledrejection', function (e) { window.__errs.push(String(e.reason)); });
+  window.__beacons = [];
+  var origLog = console.log;
+  console.log = function () {
+    try {
+      if (typeof arguments[0] === 'string' && arguments[0].indexOf('[ovp:') === 0) {
+        window.__beacons.push(Array.prototype.slice.call(arguments).map(function (a) {
+          try { return JSON.parse(JSON.stringify(a)); } catch (e) { return String(a); }
+        }));
+      }
+    } catch (e) {}
+    return origLog.apply(console, arguments);
+  };
+</script>
+<script>
+(async () => {
+  const RESULT = { ua: navigator.userAgent, samples: [], mutations: [], beacons: window.__beacons, errs: [] };
+  window.__TL = RESULT;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const container = document.getElementById('container');
+  const zoomOf = (el) => parseFloat(getComputedStyle(el).zoom) || 1;
+
+  await new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = '/dist/webview-docx.js?v=tl1';
+    s.onload = resolve;
+    document.body.appendChild(s);
+  });
+  const tlParams = new URLSearchParams(location.search);
+  const tlSample = '/' + (tlParams.get('sample') || 'tests/harness/samples/anchor-sample.docx').replace(/^\/+/, '');
+  const tlResp = await fetch(tlSample + '?t=' + Date.now());
+  if (!tlResp.ok) {
+    document.title = 'anchor-timeline:missing-sample';
+    console.log('[anchor-timeline] cannot load', tlSample, '->', tlResp.status);
+    return;
+  }
+  const buf = await tlResp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  window.dispatchEvent(new MessageEvent('message', {
+    data: { type: 'render', kind: 'docx', data: btoa(bin), fileName: 'sample.docx', baseUri: '' },
+  }));
+  for (let i = 0; i < 100; i++) {
+    await sleep(150);
+    if (container.querySelector('.docx-wrapper section.docx')) break;
+  }
+  await sleep(1500);
+
+  // Watch for late DOM work (re-render / repagination / clone passes).
+  const seenMutations = [];
+  const mo = new MutationObserver((list) => {
+    for (const m of list) {
+      seenMutations.push({
+        t: Math.round(performance.now()),
+        type: m.type,
+        target: m.target && m.target.className ? String(m.target.className).slice(0, 40) : String(m.target && m.target.nodeName),
+        added: m.addedNodes ? m.addedNodes.length : 0,
+        removed: m.removedNodes ? m.removedNodes.length : 0,
+      });
+    }
+  });
+  mo.observe(container, { childList: true, subtree: true });
+
+  // Mimic the editor's panel-fit: the real app fits on the first resize.
+  window.dispatchEvent(new Event('resize'));
+  await sleep(400);
+  window.dispatchEvent(new Event('resize'));
+  await sleep(400);
+  RESULT.fittedZoom = zoomOf(container);
+
+  // Deep scroll, the way the user reads a long document.
+  window.scrollTo(0, Math.round(document.documentElement.scrollHeight * 0.45));
+  await sleep(700);
+  RESULT.scrollDepth = Math.round(window.scrollY);
+  RESULT.docHeight = document.documentElement.scrollHeight;
+
+  // The anchor point: a text position mid-viewport.
+  const caretAt = (x, y) => {
+    const r = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+    if (!r || !r.startContainer || r.startContainer.nodeType !== 3 || !r.startContainer.data.trim()) return null;
+    const node = r.startContainer;
+    for (const o of [r.startOffset, r.startOffset - 1, r.startOffset + 1]) {
+      if (o < 0 || o >= node.data.length) continue;
+      const rr = document.createRange();
+      rr.setStart(node, o);
+      rr.setEnd(node, o + 1);
+      const rc = rr.getClientRects()[0];
+      if (rc) return { node, offset: o, sx: rc.left, sy: rc.top };
+    }
+    return null;
+  };
+  const posOf = (p) => {
+    const rr = document.createRange();
+    rr.setStart(p.node, p.offset);
+    rr.setEnd(p.node, Math.min(p.offset + 1, p.node.data.length));
+    const rc = rr.getClientRects()[0];
+    return rc ? { sx: rc.left, sy: rc.top } : null;
+  };
+
+  const cx = Math.round(window.innerWidth * 0.45);
+  const cy = Math.round(window.innerHeight * 0.5);
+  const probe = caretAt(cx, cy);
+  RESULT.probeStart = probe && { x: cx, y: cy, sx: Math.round(probe.sx * 10) / 10, sy: Math.round(probe.sy * 10) / 10 };
+  RESULT.probeFound = !!probe;
+  RESULT.zoomBefore = zoomOf(container);
+  RESULT.winBefore = [Math.round(window.scrollX), Math.round(window.scrollY)];
+
+  const sample = (label) => {
+    const p = probe ? posOf(probe) : null;
+    RESULT.samples.push({
+      label,
+      t: Math.round(performance.now()),
+      zoom: Math.round(zoomOf(container) * 1000) / 1000,
+      win: [Math.round(window.scrollX), Math.round(window.scrollY)],
+      containerTop: Math.round(container.getBoundingClientRect().top * 10) / 10,
+      docHeight: document.documentElement.scrollHeight,
+      probe: p ? [Math.round(p.sx * 10) / 10, Math.round(p.sy * 10) / 10] : null,
+      drift: p ? [Math.round((p.sx - probe.sx) * 100) / 100, Math.round((p.sy - probe.sy) * 100) / 100] : null,
+    });
+  };
+
+  sample('before');
+  const el = document.elementFromPoint(cx, cy) || document.body;
+  el.dispatchEvent(new MouseEvent('dblclick', { clientX: cx, clientY: cy, bubbles: true, cancelable: true, view: window }));
+  sample('t0');
+  for (const ms of [50, 150, 300, 600, 900, 1400, 2200, 3200]) {
+    await sleep(ms - (RESULT.samples[RESULT.samples.length - 1].t - RESULT.samples[1].t) > 0 ? ms - (RESULT.samples[RESULT.samples.length - 1].t - RESULT.samples[1].t) : 0);
+    sample('t' + ms);
+  }
+
+  mo.disconnect();
+  RESULT.mutations = seenMutations.slice(-40);
+  RESULT.errs = window.__errs.slice();
+  document.title = 'anchor-timeline:done';
+})().catch((e) => {
+  window.__TL = window.__TL || {};
+  window.__TL.fatal = String((e && e.stack) || e);
+  document.title = 'anchor-timeline:fatal';
+});
+</script>
+</body>
+</html>
