@@ -289,14 +289,21 @@ export function setupOfficeInteractive(
       return;
     }
     // Kept in sync with viewer.css: body.pane-open #container { margin-left:
-    // 188px } — the shift composes with it instead of overriding it.
-    const pane = document.body.classList.contains('pane-open') ? 188 : 0;
-    c.style.marginLeft = `${pane + shiftLocalX}px`;
+    // 188px } — the shift composes with it instead of overriding it, which
+    // means a pane toggled while the offset is in place has to be recomposed
+    // (see onOverlayToggled), or the inline value would keep the pane's share
+    // long after the pane is gone.
+    c.style.marginLeft = `${paneMargin() + shiftLocalX}px`;
     if (shiftLocalY !== 0) {
       c.style.marginTop = `${shiftLocalY}px`;
     } else {
       c.style.marginTop = '';
     }
+  }
+
+  /** The pane's own left margin, as viewer.css defines it. */
+  function paneMargin(): number {
+    return document.body.classList.contains('pane-open') ? 188 : 0;
   }
 
   /** Adds to the offset, capped so a wrong probe cannot fling the view away. */
@@ -982,6 +989,10 @@ export function setupOfficeInteractive(
   // TOC tab-stop pass landing later), so re-check once things settle.
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   const onOverlayToggled = (): void => {
+    // A pane toggled while a content offset is in place: recompose the margin
+    // with the pane's new share (the fit below bails out while zoomed, so this
+    // is the only place that can).
+    applyShift();
     refitForOverlays();
     if (settleTimer) {
       clearTimeout(settleTimer);
