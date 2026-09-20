@@ -8,7 +8,7 @@ the exact name below; nothing else in this folder ships in the VSIX
 |------|--------|------|
 | `banner.png` | AI-generated (GPT) — chosen variant carries the title text (spelling verified) | 1983×793 PNG (2.5:1), dark bg `#161820`, 1.72 MB |
 | `shot-word.png` | **Captured** — `.docx` with search bar (match counter) and dot-leader TOC | 1547×1426 PNG, 465 KB |
-| `shot-excel.png` | Pending — `.xlsx` with a sorted column indicator + frozen header, several sheet tabs | ~1530×1400 PNG, ≤ 1.5 MB |
+| `shot-excel.png` | **Captured** — sample workbook (generated via the project's SheetJS), sheet tabs + sortable table | 1550×1176 PNG, 625 KB |
 | `shot-pdf.png` | **Captured** — `.pdf` with the page thumbnails pane open | 1537×1384 PNG, 607 KB |
 | `shot-pptx.png` | **Captured** — `.pptx` deck, slides flowing down the page | 1529×1423 PNG, 1.29 MB |
 
