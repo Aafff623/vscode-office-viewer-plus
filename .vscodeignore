@@ -21,3 +21,4 @@ PROJECT_ANALYSIS.md
 .codegraph/**
 .cursor/**
 .playwright-mcp/**
+docs/**
