@@ -7,8 +7,8 @@
 **Read-only preview for Word, Excel, PowerPoint, PDF, slides and diagrams — right inside VS Code,
 with a Figma-like canvas: hand-tool pan, smooth anchored zoom, page thumbnails, outline & search.**
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/Aafff623.vscode-office-viewer-plus?label=version&logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=Aafff623.vscode-office-viewer-plus)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/Aafff623.vscode-office-viewer-plus?label=installs&logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=Aafff623.vscode-office-viewer-plus)
+[![Version](https://vsmarketplacebadges.dev/version-short/Aafff623.vscode-office-viewer-plus.svg)](https://marketplace.visualstudio.com/items?itemName=Aafff623.vscode-office-viewer-plus)
+[![Installs](https://vsmarketplacebadges.dev/installs-short/Aafff623.vscode-office-viewer-plus.svg)](https://marketplace.visualstudio.com/items?itemName=Aafff623.vscode-office-viewer-plus)
 [![Open VSX](https://img.shields.io/open-vsx/v/Aafff623/vscode-office-viewer-plus?label=open%20vsx)](https://open-vsx.org/extension/Aafff623/vscode-office-viewer-plus)
 [![CI](https://github.com/Aafff623/vscode-office-viewer-plus/actions/workflows/release.yml/badge.svg)](https://github.com/Aafff623/vscode-office-viewer-plus/actions/workflows/release.yml)
 [![Tests](https://img.shields.io/badge/tests-99%20passing-31A76C)](https://github.com/Aafff623/vscode-office-viewer-plus/actions/workflows/release.yml)
