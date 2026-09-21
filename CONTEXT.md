@@ -127,3 +127,24 @@ pdf.js 4.4 → 6.x (template: vscode-pdf-next), docx-preview 0.3.3 → 0.3.7,
 Excel interaction layer. Decisions pending with the maintainer before
 starting: VSIX size (+5.2MB for pdf.js 6), vendoring aurochs legacy-format
 parsers, LM/Agent bridge timing.
+
+## Publishing (verified 2026-09-21)
+
+- 1.2.0 went live on the VS Code Marketplace by uploading the packaged VSIX
+  through the publisher's manage page — that path needs no PAT. Open VSX is
+  still unpublished.
+- `release.yml` gates both publish steps on secrets: with `VSCE_PAT` /
+  `OVSX_PAT` empty they are skipped silently while typecheck, tests and
+  packaging still run. Adding the secrets, then `gh workflow run Release`,
+  publishes from CI (the steps are not conditioned on the event type).
+- The `release: published` event did **not** start a run for a release created
+  with `gh release create` (verified: Actions enabled, workflow active, no
+  `event=release` run appeared). Use `gh workflow run Release` instead — but
+  the "Upload to GitHub Release" step is conditioned on
+  `github.event_name == 'release'`, so a dispatch run skips it and the VSIX
+  must be attached with `gh release upload v1.2.0 <file>.vsix`.
+- `vsce package` rewrites the README's relative image paths to absolute
+  `https://github.com/<repo>/raw/HEAD/docs/images/...` URLs (verified in the
+  packaged `extension/readme.md`), so keeping `docs/**` out of the VSIX costs
+  the Marketplace listing nothing and saves ~5 MB.
+- Packaged VSIX: 210 files, 5.72 MB.
